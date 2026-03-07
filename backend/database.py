@@ -8,6 +8,9 @@ sqlite_url = f"sqlite:///{sqlite_file_name}"
 # otherwise fallback to local SQLite
 DATABASE_URL = os.environ.get("DATABASE_URL", sqlite_url)
 
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
 # Connect args specific to SQLite (not needed for Postgres, etc.)
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 

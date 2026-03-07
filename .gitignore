@@ -64,14 +64,12 @@ ml/data/
 *.xls
 
 # Models (generated binary artifacts)
-*.joblib
 *.pkl
 *.h5
 *.keras
 *.pt
 *.pth
 *.onnx
-ml/models/
 
 # Database
 *.db
@@ -88,3 +86,4 @@ vitalguard.db
 # --- Logs ---
 *.log
 logs/
+.vercel

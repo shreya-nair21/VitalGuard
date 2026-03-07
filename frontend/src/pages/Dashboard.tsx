@@ -41,9 +41,9 @@ const Dashboard = () => {
         marginBottom: '2rem' 
       }}>
         <div>
-          <h1 style={{ fontSize: '2rem', fontWeight: 700, letterSpacing: '-0.5px' }}>
-            Hi {user?.name || 'Doctor'}! How are you <br />
-            <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>feeling today?</span>
+          <h1 style={{ fontSize: '3rem', fontWeight: 700, letterSpacing: '-1.5px', lineHeight: 1.1 }}>
+            Hi {user?.name || 'Doctor'}!<br />
+            <span style={{ color: 'var(--text-muted)' }}>How are you feeling today?</span>
           </h1>
         </div>
       </div>

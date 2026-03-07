@@ -13,7 +13,7 @@ const DNAHelix = (props: any) => {
   const height = 8; // Total height
   const turns = 2; // Number of turns
   
-  useFrame((state) => {
+  useFrame(() => {
     if (group.current) {
         // Gentle rotation
         group.current.rotation.y += 0.005;

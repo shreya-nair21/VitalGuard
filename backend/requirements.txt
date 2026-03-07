@@ -8,6 +8,6 @@ pandas
 numpy
 scikit-learn
 joblib
-xgboost==1.7.3  # Or whatever ML model dependencies are needed
+xgboost==1.7.3
 lightgbm==3.3.5
 psycopg2-binary

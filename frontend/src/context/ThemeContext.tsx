@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 
 type Theme = 'light' | 'dark';
 
@@ -11,12 +12,14 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const [theme, setTheme] = useState<Theme>(() => {
-    // Check local storage or system preference
+    // Reset to light mode to match the new landing page theme by default
     const storedTheme = localStorage.getItem('vitalguard_theme');
-    if (storedTheme === 'dark' || storedTheme === 'light') {
-      return storedTheme;
+    if (storedTheme === 'dark') {
+        localStorage.removeItem('vitalguard_theme'); 
+        return 'light'; // Force light mode default to match the new brand
     }
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    if (storedTheme === 'light') return storedTheme;
+    return 'light';
   });
 
   useEffect(() => {
