@@ -103,6 +103,24 @@ def register_user(user: User, session: Session = Depends(get_session)):
     session.refresh(user)
     return user
 
+@app.get("/users", response_model=List[User])
+def get_users(session: Session = Depends(get_session)):
+    return session.exec(select(User)).all()
+
+@app.delete("/users/{user_id}")
+def delete_user(user_id: int, session: Session = Depends(get_session)):
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    # Prevent deleting the last active user/admin
+    count = len(session.exec(select(User)).all())
+    if count <= 1:
+        raise HTTPException(status_code=400, detail="Cannot delete the last remaining user")
+        
+    session.delete(user)
+    session.commit()
+    return {"message": "User deleted successfully"}
+
 # --- Patient Routes ---
 @app.post("/patients/", response_model=PatientRead)
 def create_patient(patient: PatientCreate, session: Session = Depends(get_session)):
@@ -124,6 +142,36 @@ def read_patient(patient_id: int, session: Session = Depends(get_session)):
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
     return patient
+
+@app.put("/patients/{patient_id}", response_model=PatientRead)
+def update_patient(patient_id: int, patient_update: PatientCreate, session: Session = Depends(get_session)):
+    db_patient = session.get(Patient, patient_id)
+    if not db_patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    patient_data = patient_update.dict(exclude_unset=True)
+    for key, value in patient_data.items():
+        setattr(db_patient, key, value)
+    
+    session.add(db_patient)
+    session.commit()
+    session.refresh(db_patient)
+    return db_patient
+
+@app.delete("/patients/{patient_id}")
+def delete_patient(patient_id: int, session: Session = Depends(get_session)):
+    patient = session.get(Patient, patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    # Manually delete child assessments to prevent foreign key errors
+    assessments = session.exec(select(Assessment).where(Assessment.patient_id == patient_id)).all()
+    for assessment in assessments:
+        session.delete(assessment)
+        
+    session.delete(patient)
+    session.commit()
+    return {"message": "Patient deleted successfully"}
 
 # --- Assessment Routes (ML Integration) ---
 @app.post("/assessments/", response_model=AssessmentRead)

@@ -4,10 +4,10 @@ import {
   Users, 
   Activity, 
   Bell, 
-  HelpCircle, 
   LogOut,
   Moon, 
-  Sun
+  Sun,
+  Shield
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -70,11 +70,14 @@ const Layout = () => {
           </button>
           
 
-          <NavLink to="/app/help" className="nav-link">
-            <HelpCircle size={20} />
-            Help Center
-          </NavLink>
-          
+
+
+          {user?.role === 'admin' && (
+            <NavLink to="/app/settings" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+              <Shield size={20} />
+              Settings & Users
+            </NavLink>
+          )}
           <div className="user-profile">
             <div className="user-avatar">
               {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}

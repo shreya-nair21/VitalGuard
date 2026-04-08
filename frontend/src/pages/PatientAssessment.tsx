@@ -1,17 +1,30 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Info, Activity, AlertCircle } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
-import { createAssessment, type AssessmentData } from '../services/api';
+import { Info, Activity } from 'lucide-react';
+import { createAssessment } from '../services/api';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { toast } from 'sonner';
+
+const assessmentSchema = z.object({
+  patient_id: z.coerce.number().min(1, "Patient ID is required"),
+  heart_rate: z.coerce.number().min(20, "Rate too low").max(300, "Rate too high (max 300)"),
+  systolic_bp: z.coerce.number().min(40, "BP too low").max(300, "BP too high (max 300)"),
+  spo2: z.coerce.number().min(0, "Invalid SpO2").max(100, "SpO2 cannot exceed 100%"),
+  respiratory_rate: z.coerce.number().min(0, "Invalid rate").max(100, "Rate too high"),
+  temperature: z.coerce.number().min(25, "Temp too low").max(45, "Temp too high"),
+  consciousness: z.enum(['Alert', 'Confusion', 'Voice', 'Pain', 'Unresponsive'])
+});
+type AssessmentFormValues = z.infer<typeof assessmentSchema>;
 
 const PatientAssessment = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const initialPatientId = location.state?.patient_id || 1;
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const [formData, setFormData] = useState<AssessmentData>({
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<AssessmentFormValues>({
+    resolver: zodResolver(assessmentSchema) as any,
+    defaultValues: {
       patient_id: initialPatientId,
       heart_rate: 75,
       systolic_bp: 120,
@@ -19,29 +32,27 @@ const PatientAssessment = () => {
       respiratory_rate: 16,
       temperature: 36.6,
       consciousness: 'Alert'
+    }
   });
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-      const { name, value } = e.target;
-      setFormData(prev => ({
-          ...prev,
-          [name]: value
-      }));
-  };
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
+  const onSubmitForm = async (data: any) => {
     try {
-        const result = await createAssessment(formData);
+        const result = await createAssessment(data as any);
+        
+        // Push a toast before navigating
+        if (result.risk_level === 'High Risk' || result.risk_level === 'Critical') {
+            toast.error(`CRITICAL ALERT: Model predicted ${result.risk_level}`, {
+                description: `Patient requires immediate attention. Confidence: ${(result.prediction_prob * 100).toFixed(1)}%`,
+                duration: 8000
+            });
+        } else {
+            toast.success("Assessment submitted successfully");
+        }
+        
         // Navigate to Risk Assessment page with the result data
-        navigate('/app/risk-assessment', { state: { result, vitals: formData } });
+        navigate('/app/risk-assessment', { state: { result, vitals: data } });
     } catch (err: any) {
-        setError(err.message || "Failed to submit assessment");
-    } finally {
-        setLoading(false);
+        toast.error(err.message || "Failed to submit assessment");
     }
   };
 
@@ -49,12 +60,12 @@ const PatientAssessment = () => {
     <div style={{ maxWidth: '800px', margin: '0 auto' }}>
       <div className="page-header">
         <h1 className="page-title">Patient Assessment</h1>
-        <p style={{ color: '#64748b' }}>Enter clinical vitals to generate an AI risk prediction analysis.</p>
+        <p style={{ color: 'var(--text-muted)' }}>Enter clinical vitals to generate an AI risk prediction analysis.</p>
       </div>
 
       <div style={{ 
-        backgroundColor: '#f0f9ff', 
-        border: '1px solid #bae6fd', 
+        backgroundColor: 'rgba(14, 165, 233, 0.1)', 
+        border: '1px solid rgba(14, 165, 233, 0.2)', 
         borderRadius: '0.5rem', 
         padding: '1rem', 
         marginBottom: '2rem',
@@ -63,119 +74,89 @@ const PatientAssessment = () => {
       }}>
         <Info color="#0ea5e9" size={24} style={{ flexShrink: 0 }} />
         <div>
-          <h4 style={{ color: '#0369a1', fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem' }}>AI Reliability Note</h4>
-          <p style={{ color: '#334155', fontSize: '0.875rem' }}>
+          <h4 style={{ color: '#0ea5e9', fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem' }}>AI Reliability Note</h4>
+          <p style={{ color: 'var(--text-main)', fontSize: '0.875rem' }}>
             Ensure all vitals are recorded within the last 15 minutes for the most accurate prediction results. Fields marked with * are required.
           </p>
         </div>
       </div>
 
-      {error && (
-        <div style={{ 
-            backgroundColor: '#fef2f2', 
-            border: '1px solid #fecaca', 
-            borderRadius: '0.5rem', 
-            padding: '1rem', 
-            marginBottom: '2rem',
-            color: '#ef4444',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem'
-        }}>
-            <AlertCircle size={20} />
-            {error}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit(onSubmitForm)}>
         <div className="card" style={{ marginBottom: '1.5rem' }}>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1.5rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>Patient Information</h3>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', color: 'var(--text-main)' }}>Patient Information</h3>
           
           <div className="grid grid-cols-2">
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem' }}>Patient ID *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Patient ID *</label>
               <input 
                 type="number" 
-                name="patient_id"
                 className="input-field" 
-                value={formData.patient_id}
-                onChange={handleChange}
-                required 
+                {...register("patient_id")}
               />
+              {errors.patient_id && <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{errors.patient_id.message}</p>}
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem' }}>Room Number (Optional)</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Room Number (Optional)</label>
               <input type="text" className="input-field" placeholder="e.g. 101" />
             </div>
           </div>
         </div>
 
         <div className="card" style={{ marginBottom: '2rem' }}>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1.5rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>Clinical Vitals</h3>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', color: 'var(--text-main)' }}>Clinical Vitals</h3>
           
-          <div className="grid grid-cols-2">
+          <div className="grid grid-cols-2" style={{ gap: '1rem' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem' }}>Heart Rate (BPM) *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Heart Rate (BPM) *</label>
               <input 
                 type="number" 
-                name="heart_rate"
                 className="input-field" 
-                value={formData.heart_rate}
-                onChange={handleChange}
-                required 
+                {...register("heart_rate")}
               />
+              {errors.heart_rate && <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{errors.heart_rate.message}</p>}
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem' }}>Systolic BP (mmHg) *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Systolic BP (mmHg) *</label>
               <input 
                 type="number" 
-                name="systolic_bp"
                 className="input-field" 
-                value={formData.systolic_bp}
-                onChange={handleChange}
-                required 
+                {...register("systolic_bp")}
               />
+              {errors.systolic_bp && <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{errors.systolic_bp.message}</p>}
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem' }}>O2 Saturation (%) *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>O2 Saturation (%) *</label>
               <input 
                 type="number" 
-                name="spo2"
                 className="input-field" 
-                value={formData.spo2}
-                onChange={handleChange}
-                required 
+                {...register("spo2")}
               />
+              {errors.spo2 && <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{errors.spo2.message}</p>}
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem' }}>Respiratory Rate (breath/min) *</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Respiratory Rate (breath/min) *</label>
               <input 
                 type="number" 
-                name="respiratory_rate"
                 className="input-field" 
-                value={formData.respiratory_rate}
-                onChange={handleChange}
-                required 
+                {...register("respiratory_rate")}
               />
+              {errors.respiratory_rate && <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{errors.respiratory_rate.message}</p>}
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem' }}>Temperature (°C)</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Temperature (°C)</label>
               <input 
                 type="number" 
                 step="0.1" 
-                name="temperature"
                 className="input-field" 
-                value={formData.temperature}
-                onChange={handleChange}
+                {...register("temperature")}
               />
+              {errors.temperature && <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{errors.temperature.message}</p>}
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem' }}>Consciousness Level</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Consciousness Level</label>
               <select 
-                name="consciousness"
                 className="input-field"
-                value={formData.consciousness}
-                onChange={handleChange}
+                {...register("consciousness")}
               >
                 <option value="Alert">Alert</option>
                 <option value="Confusion">Confusion</option>
@@ -183,22 +164,23 @@ const PatientAssessment = () => {
                 <option value="Pain">Pain</option>
                 <option value="Unresponsive">Unresponsive</option>
               </select>
+              {errors.consciousness && <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{errors.consciousness.message}</p>}
             </div>
           </div>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-          <button type="button" className="btn" style={{ backgroundColor: '#e2e8f0' }} onClick={() => navigate('/app')}>
+          <button type="button" className="btn" style={{ backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', border: '1px solid var(--border)' }} onClick={() => navigate('/app')}>
             Cancel
           </button>
           <button 
             type="submit" 
             className="btn btn-primary" 
             style={{ minWidth: '150px' }}
-            disabled={loading}
+            disabled={isSubmitting}
           >
             <Activity size={18} style={{ marginRight: '0.5rem' }} />
-            {loading ? 'Analyzing...' : 'Run AI Analysis'}
+            {isSubmitting ? 'Analyzing...' : 'Run AI Analysis'}
           </button>
         </div>
       </form>

@@ -1,4 +1,4 @@
-import { ChevronRight, Activity, AlertTriangle } from 'lucide-react';
+import { Activity, AlertTriangle } from 'lucide-react';
 import type { AssessmentResponse } from '../../services/api';
 
 interface RecentActivityProps {
@@ -10,21 +10,7 @@ export const CareSchedule = ({ assessments = [] }: RecentActivityProps) => {
     <div className="card" style={{ height: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h3 style={{ fontSize: '1.125rem', fontWeight: 600 }}>Recent Assessment</h3>
-        <button style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: '0.5rem', 
-          padding: '0.25rem 0.75rem', 
-          background: 'var(--background)', 
-          color: 'var(--text-muted)',
-          borderRadius: '20px', 
-          fontSize: '0.75rem', 
-          fontWeight: 500, 
-          border: 'none',
-          cursor: 'pointer'
-        }}>
-          View All <ChevronRight size={14} />
-        </button>
+
       </div>
 
       <div style={{ position: 'relative', paddingLeft: '1rem' }}>

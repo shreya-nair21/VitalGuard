@@ -27,6 +27,8 @@
 
 html.dark {
     /* Premium Dark Theme */
+    --primary: #38bdf8; /* Bright sky blue for dark mode */
+    --primary-dark: #0ea5e9;
     --background: #020617;
     --surface: #0f172a;
     --surface-gradient: linear-gradient(145deg, #0f172a 0%, #172338 100%);

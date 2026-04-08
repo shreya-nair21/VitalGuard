@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { getPatientHistory, type AssessmentResponse } from '../services/api';
 import { VitalsSection } from '../components/Dashboard/VitalsSection';
 import { CareSchedule } from '../components/Dashboard/CareSchedule';
-import { BodyMap } from '../components/Dashboard/BodyMap';
+
 import { OnlineConsultation, MedicationList } from '../components/Dashboard/SideWidgets';
 
 const Dashboard = () => {
@@ -90,7 +90,7 @@ const Dashboard = () => {
 
       <VitalsSection history={recentAssessments} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) 1fr 340px', gap: '1.5rem', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '1.5rem', alignItems: 'start' }}>
         
         {/* Left Col: Schedule & Consultations */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -98,23 +98,10 @@ const Dashboard = () => {
           <OnlineConsultation />
         </div>
 
-        {/* Middle Col: Body Map */}
-        <div className="card" style={{ height: '100%', minHeight: '600px', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <BodyMap />
-        </div>
-
-        {/* Right Col: Medications & Widgets */}
+        {/* Right Col: Medications & Quick Actions */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
              <MedicationList />
              
-             {/* Additional Widget from reference (Analysis) */}
-             {/* <div className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                    <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>Chest X-ray Analysis</h3>
-                    <Link to="/app/assessment" className="btn btn-primary" style={{ fontSize: '0.875rem' }}>New Assessment</Link>
-                </div>
-                ...
-             </div> */}
              <div className="card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                     <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>Quick Actions</h3>

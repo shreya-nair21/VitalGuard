@@ -47,6 +47,44 @@ const getAuthHeader = (): Record<string, string> => {
     return token ? { 'Authorization': `Bearer ${token}` } : {};
 };
 
+// --- User Management API ---
+
+export const getUsers = async () => {
+    const response = await fetch(`${API_URL}/users`, {
+        headers: { ...getAuthHeader() }
+    });
+    if (!response.ok) throw new Error('Failed to fetch users');
+    return await response.json();
+};
+
+export const deleteUser = async (id: number) => {
+    const response = await fetch(`${API_URL}/users/${id}`, {
+        method: 'DELETE',
+        headers: { ...getAuthHeader() }
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to delete user');
+    }
+};
+
+export const createUser = async (userData: any) => {
+    // Note: register expects a user payload where hashed_password is the raw string
+    const response = await fetch(`${API_URL}/register`, {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            ...getAuthHeader() 
+        },
+        body: JSON.stringify(userData)
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to create user');
+    }
+    return await response.json();
+};
+
 // --- Patient API ---
 
 export const getPatients = async (): Promise<Patient[]> => {
@@ -76,6 +114,37 @@ export const createPatient = async (patient: PatientCreate): Promise<Patient> =>
         return await response.json();
     } catch (error) {
         console.error('Create Patient Error:', error);
+        throw error;
+    }
+};
+
+export const updatePatient = async (id: number, patient: PatientCreate): Promise<Patient> => {
+    try {
+        const response = await fetch(`${API_URL}/patients/${id}`, {
+            method: 'PUT',
+            headers: { 
+                'Content-Type': 'application/json',
+                ...getAuthHeader() 
+            },
+            body: JSON.stringify(patient)
+        });
+        if (!response.ok) throw new Error('Failed to update patient');
+        return await response.json();
+    } catch (error) {
+        console.error('Update Patient Error:', error);
+        throw error;
+    }
+};
+
+export const deletePatient = async (id: number): Promise<void> => {
+    try {
+        const response = await fetch(`${API_URL}/patients/${id}`, {
+            method: 'DELETE',
+            headers: { ...getAuthHeader() }
+        });
+        if (!response.ok) throw new Error('Failed to delete patient');
+    } catch (error) {
+        console.error('Delete Patient Error:', error);
         throw error;
     }
 };
