@@ -91,7 +91,7 @@ def login_for_access_token(login_data: LoginRequest, session: Session = Depends(
     }
 
 @app.post("/register", response_model=User)
-def register_user(user: User, session: Session = Depends(get_session)):
+def register_user(user: User, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
     existing_user = session.exec(select(User).where(User.username == user.username)).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Username already registered")
@@ -104,11 +104,11 @@ def register_user(user: User, session: Session = Depends(get_session)):
     return user
 
 @app.get("/users", response_model=List[User])
-def get_users(session: Session = Depends(get_session)):
+def get_users(session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
     return session.exec(select(User)).all()
 
 @app.delete("/users/{user_id}")
-def delete_user(user_id: int, session: Session = Depends(get_session)):
+def delete_user(user_id: int, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -123,7 +123,7 @@ def delete_user(user_id: int, session: Session = Depends(get_session)):
 
 # --- Patient Routes ---
 @app.post("/patients/", response_model=PatientRead)
-def create_patient(patient: PatientCreate, session: Session = Depends(get_session)):
+def create_patient(patient: PatientCreate, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
     # Simple direct creation
     db_patient = Patient.from_orm(patient)
     session.add(db_patient)
@@ -132,19 +132,19 @@ def create_patient(patient: PatientCreate, session: Session = Depends(get_sessio
     return db_patient
 
 @app.get("/patients/", response_model=List[PatientRead])
-def read_patients(offset: int = 0, limit: int = 100, session: Session = Depends(get_session)):
+def read_patients(offset: int = 0, limit: int = 100, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
     patients = session.exec(select(Patient).offset(offset).limit(limit)).all()
     return patients
 
 @app.get("/patients/{patient_id}", response_model=PatientRead)
-def read_patient(patient_id: int, session: Session = Depends(get_session)):
+def read_patient(patient_id: int, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
     patient = session.get(Patient, patient_id)
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
     return patient
 
 @app.put("/patients/{patient_id}", response_model=PatientRead)
-def update_patient(patient_id: int, patient_update: PatientCreate, session: Session = Depends(get_session)):
+def update_patient(patient_id: int, patient_update: PatientCreate, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
     db_patient = session.get(Patient, patient_id)
     if not db_patient:
         raise HTTPException(status_code=404, detail="Patient not found")
@@ -159,7 +159,7 @@ def update_patient(patient_id: int, patient_update: PatientCreate, session: Sess
     return db_patient
 
 @app.delete("/patients/{patient_id}")
-def delete_patient(patient_id: int, session: Session = Depends(get_session)):
+def delete_patient(patient_id: int, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
     patient = session.get(Patient, patient_id)
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
@@ -175,7 +175,7 @@ def delete_patient(patient_id: int, session: Session = Depends(get_session)):
 
 # --- Assessment Routes (ML Integration) ---
 @app.post("/assessments/", response_model=AssessmentRead)
-def create_assessment(assessment_in: AssessmentCreate, session: Session = Depends(get_session)):
+def create_assessment(assessment_in: AssessmentCreate, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
     global predictor
     
     # Check if patient exists if ID provided
@@ -232,12 +232,12 @@ def create_assessment(assessment_in: AssessmentCreate, session: Session = Depend
     return db_assessment
 
 @app.get("/assessments/{patient_id}", response_model=List[AssessmentRead])
-def read_assessments(patient_id: int, session: Session = Depends(get_session)):
+def read_assessments(patient_id: int, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
     assessments = session.exec(select(Assessment).where(Assessment.patient_id == patient_id)).all()
     return assessments
 
 @app.get("/dashboard-stats")
-def get_dashboard_stats(session: Session = Depends(get_session)):
+def get_dashboard_stats(session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
     total_patients = session.exec(select(Patient)).all()
     count_total = len(total_patients)
     

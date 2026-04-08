@@ -100,11 +100,11 @@ class VitalGuardPredictor:
         elif hr <= 50 or hr >= 91: score += 1
         else: score += 0
         
-        # Consciousness (Assumed Alert=0 if not provided)
-        # 0=Alert, 1=Voice, 2=Pain, 3=Unresponsive
         cons = vitals.get('consciousness', 'Alert')
         if isinstance(cons, str):
-            if cons.lower() != 'alert': score += 3
+            # 'Confusion' is a high-risk state in NEWS2, worth 3 points
+            if cons.lower() != 'alert' or cons.lower() == 'confusion': 
+                score += 3
         elif cons > 0: score += 3
             
         return score
@@ -135,7 +135,17 @@ class VitalGuardPredictor:
                 'respiratory_rate': 16
             }
             
+            # Sanitize consciousness labels
+            # 'Confusion' is not in the training set (LabelEncoder classes)
+            # We map it to 'Voice' to prevent crash while maintaining high-risk signal
+            raw_cons = vitals_dict.get('consciousness', defaults['consciousness'])
+            if raw_cons.lower() == 'confusion':
+                sanitized_cons = 'Voice'
+            else:
+                sanitized_cons = raw_cons
+
             data = {k: [vitals_dict.get(k, defaults[k])] for k in defaults.keys()}
+            data['consciousness'] = [sanitized_cons]
             
             # Calculate NEWS score if not provided
             if 'news_score' not in vitals_dict:

@@ -27,7 +27,8 @@ const RiskAssessment = () => {
     // Helper to determine risk visual
     const getRiskColor = (risk: string) => {
         if (!risk) return '#ef4444';
-        return risk.toLowerCase().includes('high') ? '#ef4444' : '#22c55e';
+        const r = risk.toLowerCase();
+        return (r.includes('high') || r.includes('error') || r.includes('critical')) ? '#ef4444' : '#22c55e';
     };
 
     const riskColor = result ? getRiskColor(result.risk_level) : '#94a3b8';
@@ -87,7 +88,12 @@ const RiskAssessment = () => {
 
       <div style={{ display: 'flex', gap: '2rem', marginBottom: '2rem' }}>
         {/* Left Column: Risk Score */}
-        <div className="card" style={{ flex: '0 0 350px', textAlign: 'center', borderColor: riskColor, backgroundColor: result?.risk_level === 'Stable' ? '#f0fdf4' : '#fef2f2' }}>
+        <div className="card" style={{ 
+            flex: '0 0 350px', 
+            textAlign: 'center', 
+            borderColor: riskColor, 
+            backgroundColor: result?.risk_level === 'Stable' ? '#f0fdf4' : '#fef2f2' 
+        }}>
           <div style={{ 
             width: '120px', 
             height: '120px', 
@@ -108,7 +114,7 @@ const RiskAssessment = () => {
             {result?.risk_level === 'Stable' ? 'Patient Stable' : 'Critical Warning'}
           </h2>
           <p style={{ color: result?.risk_level === 'Stable' ? '#166534' : '#7f1d1d', marginBottom: '1.5rem' }}>
-            {result?.analysis_text || "Analysis complete based on provided vitals."}
+            {result?.analysis_text || (result?.risk_level === 'Error' ? "An error occurred during AI analysis. Please check clinical telemetry manually." : "Analysis complete based on provided vitals.")}
           </p>
 
           <div style={{ padding: '0.75rem', backgroundColor: result?.risk_level === 'Stable' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)', borderRadius: '0.5rem', fontSize: '0.875rem', color: result?.risk_level === 'Stable' ? '#15803d' : '#991b1b' }}>

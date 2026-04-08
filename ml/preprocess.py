@@ -58,10 +58,22 @@ class DataPreprocessor:
         
         # Encode consciousness level
         # Alert=0, Voice=1, Pain=2, Unresponsive=3
-        if fit:
-            df['consciousness_encoded'] = self.consciousness_encoder.fit_transform(df['consciousness'])
-        else:
-            df['consciousness_encoded'] = self.consciousness_encoder.transform(df['consciousness'])
+        encoded_col = []
+        for val in df['consciousness']:
+            try:
+                # Try to transform with existing fitted classes
+                transformed = self.consciousness_encoder.transform([val])[0]
+                encoded_col.append(transformed)
+            except (ValueError, KeyError):
+                # Fallback for unseen labels like 'Confusion' if not pre-mapped
+                # Ensure it defaults to Alert (0) or similar to prevent crash
+                try:
+                    alert_idx = list(self.consciousness_encoder.classes_).index('Alert')
+                    encoded_col.append(alert_idx)
+                except ValueError:
+                    encoded_col.append(0)
+                    
+        df['consciousness_encoded'] = encoded_col
         
         # Gender encoding
         df['gender_encoded'] = df['gender'].map({'M': 1, 'F': 0})

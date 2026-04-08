@@ -51,8 +51,8 @@ const Dashboard = () => {
       {latestAssessment && (
         <div className="card" style={{ 
           marginBottom: '2rem', 
-          backgroundColor: latestAssessment.risk_level === 'High Risk' ? 'rgba(254, 226, 226, 0.3)' : 'rgba(220, 252, 231, 0.3)', // Semi-transparent for dark mode compat
-          borderColor: latestAssessment.risk_level === 'High Risk' ? '#fecaca' : '#bbf7d0',
+          backgroundColor: (latestAssessment.risk_level === 'High Risk' || latestAssessment.risk_level === 'Error') ? 'rgba(254, 226, 226, 0.3)' : 'rgba(220, 252, 231, 0.3)', // Semi-transparent for dark mode compat
+          borderColor: (latestAssessment.risk_level === 'High Risk' || latestAssessment.risk_level === 'Error') ? '#fecaca' : '#bbf7d0',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -63,13 +63,13 @@ const Dashboard = () => {
                 <div style={{ 
                     padding: '0.75rem', 
                     borderRadius: '50%', 
-                    backgroundColor: latestAssessment.risk_level === 'High Risk' ? '#fee2e2' : '#dcfce7',
-                    color: latestAssessment.risk_level === 'High Risk' ? '#991b1b' : '#166534'
+                    backgroundColor: (latestAssessment.risk_level === 'High Risk' || latestAssessment.risk_level === 'Error') ? '#fee2e2' : '#dcfce7',
+                    color: (latestAssessment.risk_level === 'High Risk' || latestAssessment.risk_level === 'Error') ? '#991b1b' : '#166534'
                 }}>
-                    {latestAssessment.risk_level === 'High Risk' ? <AlertTriangle size={24} /> : <CheckCircle size={24} />}
+                    {(latestAssessment.risk_level === 'High Risk' || latestAssessment.risk_level === 'Error') ? <AlertTriangle size={24} /> : <CheckCircle size={24} />}
                 </div>
                 <div>
-                    <h3 style={{ margin: 0, fontSize: '1.25rem', color: latestAssessment.risk_level === 'High Risk' ? '#ef4444' : '#22c55e' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.25rem', color: (latestAssessment.risk_level === 'High Risk' || latestAssessment.risk_level === 'Error') ? '#ef4444' : '#22c55e' }}>
                         Latest Analysis: {latestAssessment.risk_level}
                     </h3>
                     <p style={{ margin: '0.25rem 0 0', color: 'var(--text-secondary)' }}>
