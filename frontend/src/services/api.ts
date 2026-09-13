@@ -5,13 +5,21 @@ export interface Patient {
     age: number;
     gender: 'M' | 'F';
     mrn: string;
+    room_number?: string;
 }
 
 export interface PatientCreate {
     name: string;
     age: number;
     gender: 'M' | 'F';
-    mrn: string;
+    mrn?: string;
+    room_number?: string;
+}
+
+export interface NextAllotment {
+    next_id: number;
+    next_room: string;
+    next_mrn?: string;
 }
 
 // ... existing Vitals/Assessment interfaces ...
@@ -96,6 +104,19 @@ export const getPatients = async (): Promise<Patient[]> => {
         return await response.json();
     } catch (error) {
         console.error('Get Patients Error:', error);
+        throw error;
+    }
+};
+
+export const getNextAllotment = async (): Promise<NextAllotment> => {
+    try {
+        const response = await fetch(`${API_URL}/patients/next-allotment`, {
+            headers: { ...getAuthHeader() }
+        });
+        if (!response.ok) throw new Error('Failed to fetch next allotment info');
+        return await response.json();
+    } catch (error) {
+        console.error('Get Next Allotment Error:', error);
         throw error;
     }
 };

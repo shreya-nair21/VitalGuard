@@ -1,21 +1,23 @@
 import { useState, useEffect } from 'react';
 import { Search, X, UserPlus, Edit3, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { getPatients, createPatient, updatePatient, deletePatient, getPatientHistory, type Patient } from '../services/api';
+import { getPatients, createPatient, updatePatient, deletePatient, getPatientHistory, getNextAllotment, type Patient, type NextAllotment } from '../services/api';
 import { motion } from 'framer-motion';
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { RiskBadge } from '../utils/riskBadge';
 
-// Zod Schema
+// Zod Schema (Healthcare workers only fill Name, Age, Gender)
 const patientSchema = z.object({
   id: z.number().optional(),
   name: z.string().min(2, "Name must be at least 2 characters"),
   age: z.coerce.number().min(0, "Age must be >= 0").max(120, "Please enter a valid age under 120"),
   gender: z.enum(["M", "F"]),
-  mrn: z.string().min(3, "MRN must be at least 3 characters")
+  mrn: z.string().optional(),
+  room_number: z.string().optional()
 });
 type PatientFormValues = z.infer<typeof patientSchema>;
 
@@ -47,6 +49,25 @@ const PatientSparkline = ({ patientId }: { patientId: number }) => {
   );
 };
 
+// Subcomponent to load patient's latest risk status badge
+const PatientStatusBadge = ({ patientId }: { patientId: number }) => {
+  const [latest, setLatest] = useState<{ risk_level: string; prediction_prob: number } | null>(null);
+
+  useEffect(() => {
+    getPatientHistory(patientId).then(history => {
+      if (history && history.length > 0) {
+        setLatest(history[0]);
+      }
+    }).catch(() => {});
+  }, [patientId]);
+
+  if (!latest) {
+    return <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontStyle: 'italic' }}>Pending</span>;
+  }
+
+  return <RiskBadge probability={latest.prediction_prob} riskLevel={latest.risk_level} />;
+};
+
 const PatientList = () => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
@@ -56,6 +77,8 @@ const PatientList = () => {
   // Modal state
   const [showForm, setShowForm] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [nextAllotment, setNextAllotment] = useState<NextAllotment | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<PatientFormValues>({
     resolver: zodResolver(patientSchema) as any,
@@ -78,20 +101,29 @@ const PatientList = () => {
     }
   };
 
-  const openCreateForm = () => {
+  const openCreateForm = async () => {
     setEditMode(false);
-    reset({ name: '', age: undefined, gender: 'M', mrn: '' });
+    setSelectedPatient(null);
+    reset({ name: '', age: undefined, gender: 'M' });
     setShowForm(true);
+    try {
+      const info = await getNextAllotment();
+      setNextAllotment(info);
+    } catch (err) {
+      console.error("Failed to load next allotment info", err);
+    }
   };
 
   const openEditForm = (patient: Patient) => {
     setEditMode(true);
+    setSelectedPatient(patient);
     reset({
       id: patient.id,
       name: patient.name,
       age: patient.age,
       gender: patient.gender,
-      mrn: patient.mrn
+      mrn: patient.mrn,
+      room_number: patient.room_number
     });
     setShowForm(true);
   };
@@ -101,7 +133,7 @@ const PatientList = () => {
     try {
       await deletePatient(id);
       setPatients(patients.filter(p => p.id !== id));
-      toast.success("Patient successfully deleted");
+      toast.success("Patient successfully deleted (Room freed up)");
     } catch (error) {
       toast.error("Failed to delete patient");
     }
@@ -109,19 +141,20 @@ const PatientList = () => {
 
   const onSubmitForm = async (data: any) => {
     try {
-      const payload = {
+      const payload: any = {
         name: data.name,
         age: Number(data.age),
-        gender: data.gender as 'M' | 'F',
-        mrn: data.mrn
+        gender: data.gender as 'M' | 'F'
       };
 
       if (editMode && data.id) {
+        if (data.mrn) payload.mrn = data.mrn;
+        if (data.room_number) payload.room_number = data.room_number;
         await updatePatient(data.id, payload);
         toast.success("Patient updated successfully");
       } else {
         await createPatient(payload);
-        toast.success("New patient added successfully");
+        toast.success("New patient registered and room allotted automatically");
       }
       
       await fetchPatients();
@@ -133,8 +166,8 @@ const PatientList = () => {
 
   const filteredPatients = patients.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.mrn.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.id.toString().includes(searchTerm)
+    p.id.toString().includes(searchTerm) ||
+    (p.room_number && p.room_number.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -182,6 +215,53 @@ const PatientList = () => {
                     <button onClick={() => setShowForm(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={20} /></button>
                 </div>
                 <form onSubmit={handleSubmit(onSubmitForm)}>
+                    {!editMode ? (
+                        <div style={{
+                            padding: '0.875rem 1rem',
+                            backgroundColor: 'rgba(14, 165, 233, 0.08)',
+                            border: '1px solid rgba(14, 165, 233, 0.25)',
+                            borderRadius: '12px',
+                            marginBottom: '1.25rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between'
+                        }}>
+                            <div>
+                                <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.5px' }}>Auto-Allotted Patient ID</div>
+                                <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                                    #{nextAllotment ? nextAllotment.next_id : '...'}
+                                </div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.5px' }}>Assigned Room</div>
+                                <span style={{ 
+                                    display: 'inline-block',
+                                    padding: '0.25rem 0.65rem',
+                                    backgroundColor: '#0ea5e9',
+                                    color: '#fff',
+                                    borderRadius: '999px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 700
+                                }}>
+                                    {nextAllotment ? `Room ${nextAllotment.next_room}` : 'Allotting...'}
+                                </span>
+                            </div>
+                        </div>
+                    ) : (
+                        <div style={{
+                            padding: '0.75rem 1rem',
+                            backgroundColor: 'var(--input-bg)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '10px',
+                            marginBottom: '1.25rem',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            fontSize: '0.85rem'
+                        }}>
+                            <span>Patient ID: <strong style={{ color: 'var(--text-main)' }}>#{selectedPatient?.id}</strong></span>
+                            <span>Assigned Room: <strong style={{ color: 'var(--text-main)' }}>Room {selectedPatient?.room_number || 'N/A'}</strong></span>
+                        </div>
+                    )}
                     <div style={{ marginBottom: '1.25rem' }}>
                         <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Full Name</label>
                         <input 
@@ -191,7 +271,7 @@ const PatientList = () => {
                         />
                         {errors.name && <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{errors.name.message}</p>}
                     </div>
-                    <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.25rem' }}>
+                    <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
                         <div style={{ flex: 1 }}>
                             <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Age</label>
                             <input 
@@ -213,19 +293,10 @@ const PatientList = () => {
                             {errors.gender && <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{errors.gender.message}</p>}
                         </div>
                     </div>
-                    <div style={{ marginBottom: '2rem' }}>
-                        <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>MRN (Medical Record #)</label>
-                        <input 
-                            type="text" className="input-field" 
-                            {...register("mrn")}
-                            placeholder="e.g. VG-1001"
-                        />
-                        {errors.mrn && <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{errors.mrn.message}</p>}
-                    </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
                         <button type="button" className="btn" onClick={() => setShowForm(false)} style={{ backgroundColor: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>Cancel</button>
                         <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
-                            {isSubmitting ? 'Saving...' : (editMode ? 'Save Changes' : 'Save Patient')}
+                            {isSubmitting ? 'Saving...' : (editMode ? 'Save Changes' : 'Register Patient')}
                         </button>
                     </div>
                 </form>
@@ -239,7 +310,7 @@ const PatientList = () => {
                 <Search size={20} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input 
                   type="text" 
-                  placeholder="Search by name, MRN, or ID..." 
+                  placeholder="Search by name, room, or patient ID..." 
                   className="input-field"
                   style={{ 
                       paddingLeft: '3rem', marginBottom: 0, 
@@ -258,11 +329,13 @@ const PatientList = () => {
             </div>
         ) : (
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '920px' }}>
                 <thead>
                     <tr style={{ textAlign: 'left', backgroundColor: 'var(--background)', borderBottom: '1px solid var(--border)' }}>
                         <th style={{ padding: '1.25rem 2rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase' }}>Patient Name</th>
-                        <th style={{ padding: '1.25rem 2rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase' }}>MRN / ID</th>
+                        <th style={{ padding: '1.25rem 2rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase' }}>Room No.</th>
+                        <th style={{ padding: '1.25rem 2rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase' }}>Patient ID</th>
+                        <th style={{ padding: '1.25rem 2rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase' }}>Risk Status</th>
                         <th style={{ padding: '1.25rem 2rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase' }}>Vitals Trend</th>
                         <th style={{ padding: '1.25rem 2rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase' }}>Actions</th>
                     </tr>
@@ -270,7 +343,7 @@ const PatientList = () => {
                 <tbody>
                     {filteredPatients.length === 0 ? (
                         <tr>
-                            <td colSpan={4} style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                            <td colSpan={6} style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                                 No patients found.
                             </td>
                         </tr>
@@ -288,8 +361,32 @@ const PatientList = () => {
                                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{patient.age} yrs • {patient.gender}</div>
                             </td>
                             <td style={{ padding: '1.25rem 2rem' }}>
-                                <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.9rem' }}>{patient.mrn}</div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>ID: {patient.id}</div>
+                                <span style={{
+                                    display: 'inline-flex', alignItems: 'center',
+                                    padding: '0.3rem 0.75rem', borderRadius: '999px',
+                                    fontSize: '0.8rem', fontWeight: 600,
+                                    backgroundColor: 'rgba(14, 165, 233, 0.1)', color: '#0ea5e9',
+                                    border: '1px solid rgba(14, 165, 233, 0.25)'
+                                }}>
+                                    Room {patient.room_number || 'N/A'}
+                                </span>
+                            </td>
+                            <td style={{ padding: '1.25rem 2rem' }}>
+                                <span style={{
+                                    fontWeight: 700,
+                                    color: 'var(--text-main)',
+                                    fontSize: '0.9rem',
+                                    fontFamily: 'monospace',
+                                    backgroundColor: 'var(--input-bg)',
+                                    padding: '0.25rem 0.6rem',
+                                    borderRadius: '6px',
+                                    border: '1px solid var(--border)'
+                                }}>
+                                    #{patient.id}
+                                </span>
+                            </td>
+                            <td style={{ padding: '1.25rem 2rem' }}>
+                                <PatientStatusBadge patientId={patient.id} />
                             </td>
                             <td style={{ padding: '1.25rem 2rem' }}>
                                 <PatientSparkline patientId={patient.id} />

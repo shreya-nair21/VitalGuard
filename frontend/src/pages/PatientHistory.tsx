@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Activity, Clock, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Activity, Clock, AlertTriangle, CheckCircle, ShieldAlert } from 'lucide-react';
 import { getPatientHistory, getPatients, type AssessmentResponse, type Patient } from '../services/api';
+import { getRiskConfig, RiskBadge } from '../utils/riskBadge';
 
 const PatientHistory = () => {
   const location = useLocation();
@@ -49,8 +50,19 @@ const PatientHistory = () => {
     }
   }, [selectedPatientId]);
 
+  const selectedPatient = patients.find(p => p.id === selectedPatientId);
+
   if (loading) return <div>Loading history...</div>;
-  if (error) return <div style={{ color: 'red' }}>Error: {error} (Is the backend running?)</div>;
+  if (error) return (
+    <div className="card" style={{ maxWidth: '500px', margin: '3rem auto', textAlign: 'center', padding: '2rem' }}>
+      <AlertTriangle size={36} color="#ef4444" style={{ margin: '0 auto 1rem' }} />
+      <h3 style={{ color: '#ef4444', marginBottom: '0.5rem' }}>Unable to Load Patient History</h3>
+      <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>{error}</p>
+      <button onClick={() => window.location.reload()} className="btn btn-primary" style={{ margin: '0 auto' }}>
+        Retry Connection
+      </button>
+    </div>
+  );
 
   return (
     <div>
@@ -73,11 +85,13 @@ const PatientHistory = () => {
                         cursor: 'pointer',
                         width: 'auto',
                         marginBottom: 0,
-                        minWidth: '200px'
+                        minWidth: '220px'
                     }}
                 >
                     {patients.map(p => (
-                        <option key={p.id} value={p.id}>{p.name} (ID: {p.id})</option>
+                        <option key={p.id} value={p.id}>
+                          #{p.id} - {p.name} (Room {p.room_number || 'N/A'})
+                        </option>
                     ))}
                     {/* Fallback if patients not loaded yet or ID not in list */}
                     {!patients.find(p => p.id === selectedPatientId) && (
@@ -92,6 +106,38 @@ const PatientHistory = () => {
 
       <div style={{ display: 'flex', gap: '2rem', marginTop: '2rem' }}>
         <div style={{ flex: '0 0 300px' }}>
+          {selectedPatient && (
+            <div className="card" style={{ marginBottom: '1.5rem' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--text-main)' }}>
+                Patient Details
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.85rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Name:</span>
+                  <strong>{selectedPatient.name}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Patient ID:</span>
+                  <strong>#{selectedPatient.id}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Allotted Room:</span>
+                  <span style={{
+                    padding: '0.2rem 0.6rem',
+                    backgroundColor: 'rgba(14, 165, 233, 0.1)',
+                    color: '#0ea5e9',
+                    borderRadius: '999px',
+                    fontWeight: 600,
+                    fontSize: '0.8rem',
+                    border: '1px solid rgba(14, 165, 233, 0.25)'
+                  }}>
+                    Room {selectedPatient.room_number || 'N/A'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="card" style={{ marginBottom: '1.5rem' }}>
             <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center' }}>
               <Activity size={18} style={{ marginRight: '0.5rem', color: '#0ea5e9' }} />
@@ -120,11 +166,10 @@ const PatientHistory = () => {
              Assessment Timeline
            </h3>
 
-           <div style={{ position: 'relative', paddingLeft: '2rem', borderLeft: '2px solid #e2e8f0' }}>
+           <div style={{ position: 'relative', paddingLeft: '2rem', borderLeft: '2px solid var(--border)' }}>
              
              {assessments.map((assessment) => {
-                 const isRisk = assessment.risk_level === 'High Risk';
-                 const color = isRisk ? '#ef4444' : '#22c55e';
+                 const config = getRiskConfig(assessment.prediction_prob, assessment.risk_level);
                  const date = new Date(assessment.timestamp);
                  
                  return (
@@ -136,25 +181,42 @@ const PatientHistory = () => {
                             width: '16px', 
                             height: '16px', 
                             borderRadius: '50%', 
-                            backgroundColor: color, 
+                            backgroundColor: config.color, 
                             border: '4px solid var(--background)',
-                            boxShadow: `0 0 0 1px ${color}`
+                            boxShadow: `0 0 0 1px ${config.color}`
                         }}></div>
-                        <div className="card" style={{ borderColor: isRisk ? '#fecaca' : 'var(--border)', backgroundColor: isRisk ? '#fef2f2' : 'var(--surface)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                                <h4 style={{ fontWeight: 600, color: isRisk ? '#991b1b' : '#166534', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    {isRisk ? <AlertTriangle size={16}/> : <CheckCircle size={16}/>}
-                                    {isRisk ? 'Risk Alert' : 'Stable Assessment'}
-                                </h4>
-                                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                        <div className="card" style={{ borderColor: config.borderColor, backgroundColor: config.lightBg }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                                    <h4 style={{ fontWeight: 600, color: config.color, display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
+                                        {config.tier === 'critical' ? (
+                                          <ShieldAlert size={18} />
+                                        ) : config.tier === 'high' ? (
+                                          <AlertTriangle size={18} />
+                                        ) : (
+                                          <CheckCircle size={18} />
+                                        )}
+                                        {config.label} Assessment
+                                    </h4>
+                                    <RiskBadge 
+                                      probability={assessment.prediction_prob} 
+                                      riskLevel={assessment.risk_level} 
+                                    />
+                                    {typeof assessment.prediction_prob === 'number' && (
+                                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                        ({(assessment.prediction_prob > 1 ? assessment.prediction_prob : assessment.prediction_prob * 100).toFixed(0)}% Score)
+                                      </span>
+                                    )}
+                                </div>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                     {date.toLocaleDateString()} {date.toLocaleTimeString()}
                                 </span>
                             </div>
-                            <p style={{ fontSize: '0.875rem', color: '#475569', marginBottom: '0.5rem' }}>
-                                <strong>Vitals:</strong> HR: {assessment.heart_rate} | BP: {assessment.systolic_bp} | SpO2: {assessment.spo2}% | Temp: {assessment.temperature}°C
+                            <p style={{ fontSize: '0.875rem', color: 'var(--text-main)', marginBottom: '0.5rem' }}>
+                                <strong>Vitals:</strong> HR: {assessment.heart_rate} bpm | BP: {assessment.systolic_bp} mmHg | SpO2: {assessment.spo2}% | Temp: {assessment.temperature}°C
                             </p>
                             {assessment.analysis_text && (
-                                <p style={{ fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
+                                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic', margin: 0 }}>
                                     Note: {assessment.analysis_text}
                                 </p>
                             )}

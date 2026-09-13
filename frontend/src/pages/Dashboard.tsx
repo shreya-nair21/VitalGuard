@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle, AlertTriangle } from 'lucide-react';
+import { CheckCircle, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getPatientHistory, type AssessmentResponse } from '../services/api';
 import { VitalsSection } from '../components/Dashboard/VitalsSection';
 import { CareSchedule } from '../components/Dashboard/CareSchedule';
+import { getRiskConfig, RiskBadge } from '../utils/riskBadge';
 
 import { OnlineConsultation, MedicationList } from '../components/Dashboard/SideWidgets';
 
@@ -31,6 +32,8 @@ const Dashboard = () => {
     fetchLatest();
   }, []);
   
+  const riskConfig = latestAssessment ? getRiskConfig(latestAssessment.prediction_prob, latestAssessment.risk_level) : null;
+
   return (
     <div style={{ maxWidth: '1600px', margin: '0 auto' }}>
       {/* Header */}
@@ -48,11 +51,11 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {latestAssessment && (
+      {latestAssessment && riskConfig && (
         <div className="card" style={{ 
           marginBottom: '2rem', 
-          backgroundColor: (latestAssessment.risk_level === 'High Risk' || latestAssessment.risk_level === 'Error') ? 'rgba(254, 226, 226, 0.3)' : 'rgba(220, 252, 231, 0.3)', // Semi-transparent for dark mode compat
-          borderColor: (latestAssessment.risk_level === 'High Risk' || latestAssessment.risk_level === 'Error') ? '#fecaca' : '#bbf7d0',
+          backgroundColor: riskConfig.lightBg,
+          borderColor: riskConfig.borderColor,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -63,16 +66,36 @@ const Dashboard = () => {
                 <div style={{ 
                     padding: '0.75rem', 
                     borderRadius: '50%', 
-                    backgroundColor: (latestAssessment.risk_level === 'High Risk' || latestAssessment.risk_level === 'Error') ? '#fee2e2' : '#dcfce7',
-                    color: (latestAssessment.risk_level === 'High Risk' || latestAssessment.risk_level === 'Error') ? '#991b1b' : '#166534'
+                    backgroundColor: riskConfig.bgColor,
+                    color: riskConfig.color,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
                 }}>
-                    {(latestAssessment.risk_level === 'High Risk' || latestAssessment.risk_level === 'Error') ? <AlertTriangle size={24} /> : <CheckCircle size={24} />}
+                    {riskConfig.tier === 'critical' ? (
+                      <ShieldAlert size={26} />
+                    ) : riskConfig.tier === 'high' ? (
+                      <AlertTriangle size={24} />
+                    ) : (
+                      <CheckCircle size={24} />
+                    )}
                 </div>
                 <div>
-                    <h3 style={{ margin: 0, fontSize: '1.25rem', color: (latestAssessment.risk_level === 'High Risk' || latestAssessment.risk_level === 'Error') ? '#ef4444' : '#22c55e' }}>
-                        Latest Analysis: {latestAssessment.risk_level}
-                    </h3>
-                    <p style={{ margin: '0.25rem 0 0', color: 'var(--text-secondary)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                      <h3 style={{ margin: 0, fontSize: '1.25rem', color: riskConfig.color }}>
+                          Latest Analysis: {riskConfig.label}
+                      </h3>
+                      <RiskBadge 
+                        probability={latestAssessment.prediction_prob} 
+                        riskLevel={latestAssessment.risk_level} 
+                      />
+                      {typeof latestAssessment.prediction_prob === 'number' && (
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                          ({(latestAssessment.prediction_prob > 1 ? latestAssessment.prediction_prob : latestAssessment.prediction_prob * 100).toFixed(0)}% Confidence)
+                        </span>
+                      )}
+                    </div>
+                    <p style={{ margin: '0.35rem 0 0', color: 'var(--text-secondary)' }}>
                         {latestAssessment.analysis_text || "Assessment complete."}
                     </p>
                 </div>

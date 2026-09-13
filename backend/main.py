@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import timedelta
@@ -121,11 +121,47 @@ def delete_user(user_id: int, session: Session = Depends(get_session), current_u
     session.commit()
     return {"message": "User deleted successfully"}
 
+# --- Patient Helper Functions ---
+def get_next_patient_id(session: Session) -> int:
+    max_id = session.exec(select(func.max(Patient.id))).one()
+    return (max_id or 0) + 1
+
+def get_next_available_room(session: Session) -> str:
+    occupied_rooms = set(r for r in session.exec(select(Patient.room_number)).all() if r)
+    candidate = 101
+    while str(candidate) in occupied_rooms:
+        candidate += 1
+    return str(candidate)
+
 # --- Patient Routes ---
+@app.get("/patients/next-allotment")
+def get_next_allotment(session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
+    next_id = get_next_patient_id(session)
+    next_room = get_next_available_room(session)
+    return {
+        "next_id": next_id,
+        "next_room": next_room
+    }
+
 @app.post("/patients/", response_model=PatientRead)
 def create_patient(patient: PatientCreate, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Simple direct creation
-    db_patient = Patient.from_orm(patient)
+    # 1. Determine next sequential ID in order
+    next_id = get_next_patient_id(session)
+    
+    # 2. MRN is optional/blank (using sequential ID instead)
+    mrn = patient.mrn.strip() if (patient.mrn and patient.mrn.strip()) else ""
+    
+    # 3. Automatically allot first available room from pool if not provided
+    room_number = patient.room_number.strip() if (patient.room_number and patient.room_number.strip()) else get_next_available_room(session)
+    
+    db_patient = Patient(
+        id=next_id,
+        name=patient.name,
+        age=patient.age,
+        gender=patient.gender,
+        mrn=mrn,
+        room_number=room_number
+    )
     session.add(db_patient)
     session.commit()
     session.refresh(db_patient)
@@ -151,7 +187,8 @@ def update_patient(patient_id: int, patient_update: PatientCreate, session: Sess
     
     patient_data = patient_update.dict(exclude_unset=True)
     for key, value in patient_data.items():
-        setattr(db_patient, key, value)
+        if value is not None:
+            setattr(db_patient, key, value)
     
     session.add(db_patient)
     session.commit()
@@ -210,9 +247,18 @@ def create_assessment(assessment_in: AssessmentCreate, session: Session = Depend
                     vitals["gender"] = patient.gender
             
             result = predictor.predict(vitals)
-            risk_level = result.get("risk_level", "Unknown")
-            prediction_prob = result.get("probability", 0.0)
+            prediction_prob = float(result.get("probability", 0.0))
             analysis_text = result.get("analysis", "")
+            
+            # 4-tier risk classification based on confidence/probability score
+            if prediction_prob >= 0.75:
+                risk_level = "Critical"
+            elif prediction_prob >= 0.50:
+                risk_level = "High Risk"
+            elif prediction_prob >= 0.25:
+                risk_level = "Moderate"
+            else:
+                risk_level = "Stable"
             
         except Exception as e:
             print(f"Error during prediction: {e}")

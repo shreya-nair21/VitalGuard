@@ -4,10 +4,10 @@
   "description": "VitalGuard Full Stack Application",
   "scripts": {
     "start": "concurrently \"npm run backend\" \"npm run frontend\"",
-    "backend": ".venv\\Scripts\\python -m uvicorn backend.main:app --reload --port 8000",
+    "backend": "python -m uvicorn backend.main:app --reload --port 8000",
     "frontend": "npm run dev --prefix frontend",
     "install:all": "pip install -r backend/requirements.txt && npm install --prefix frontend",
-    "seed": ".venv\\Scripts\\python create_default_user.py"
+    "seed": "python create_default_user.py"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

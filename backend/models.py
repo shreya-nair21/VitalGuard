@@ -17,7 +17,8 @@ class PatientBase(SQLModel):
     name: str = Field(index=True)
     age: int
     gender: str = Field(default="M")
-    mrn: str = Field(default="N/A")  # Medical Record Number
+    mrn: Optional[str] = Field(default="N/A")  # Medical Record Number
+    room_number: Optional[str] = Field(default=None, index=True)
 
 class Patient(PatientBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -25,8 +26,12 @@ class Patient(PatientBase, table=True):
     # Relationships
     assessments: List["Assessment"] = Relationship(back_populates="patient")
 
-class PatientCreate(PatientBase):
-    pass
+class PatientCreate(SQLModel):
+    name: str
+    age: int
+    gender: str = "M"
+    mrn: Optional[str] = None
+    room_number: Optional[str] = None
 
 class PatientRead(PatientBase):
     id: int

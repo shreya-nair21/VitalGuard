@@ -191,8 +191,15 @@ class VitalGuardPredictor:
             probability = self.model.predict_proba(X_scaled)[0][1]
             prediction = self.model.predict(X_scaled)[0]
             
-            # 7. Format result
-            risk_level = "High Risk" if prediction == 1 else "Stable"
+            # 7. Format result (4-tier categorization based on probability)
+            if probability >= 0.75:
+                risk_level = "Critical"
+            elif probability >= 0.50:
+                risk_level = "High Risk"
+            elif probability >= 0.25:
+                risk_level = "Moderate"
+            else:
+                risk_level = "Stable"
             
             # Detailed analysis text
             reasons = []

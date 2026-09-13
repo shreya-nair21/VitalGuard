@@ -26,7 +26,8 @@ def seed_patient():
             name="Sarah Jenkins",
             age=45,
             gender="F",
-            mrn="VG-1001"
+            mrn="VG-1001",
+            room_number="101"
         )
         session.add(new_patient)
         session.commit()

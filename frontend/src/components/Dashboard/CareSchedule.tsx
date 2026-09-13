@@ -1,5 +1,6 @@
-import { Activity, AlertTriangle } from 'lucide-react';
+import { Activity, AlertTriangle, ShieldAlert } from 'lucide-react';
 import type { AssessmentResponse } from '../../services/api';
+import { getRiskConfig, RiskBadge } from '../../utils/riskBadge';
 
 interface RecentActivityProps {
   assessments?: AssessmentResponse[];
@@ -27,7 +28,7 @@ export const CareSchedule = ({ assessments = [] }: RecentActivityProps) => {
 
         {assessments.slice(0, 4).map((item, index) => {
            const time = new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-           const isRisk = item.risk_level === 'High Risk';
+           const config = getRiskConfig(item.prediction_prob, item.risk_level);
            
            return (
           <div key={item.id || index} style={{ display: 'flex', gap: '2rem', marginBottom: '2rem', position: 'relative' }}>
@@ -36,21 +37,35 @@ export const CareSchedule = ({ assessments = [] }: RecentActivityProps) => {
             <div style={{ 
               flex: 1, 
               padding: '1rem', 
-              backgroundColor: isRisk ? '#fef2f2' : 'var(--background)',
+              backgroundColor: config.lightBg,
               borderRadius: '16px',
-              border: isRisk ? '1px solid #fecaca' : 'none',
+              border: `1px solid ${config.borderColor}`,
               boxShadow: index === 0 ? 'var(--shadow)' : 'none'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <h4 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.25rem', color: isRisk ? '#ef4444' : 'var(--text-main)' }}>
-                      {isRisk ? 'Risk Alert' : 'Vitals Check'}
-                  </h4>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
+                    <h4 style={{ fontSize: '0.9rem', fontWeight: 600, margin: 0, color: config.color }}>
+                        {config.label} Assessment
+                    </h4>
+                    <RiskBadge 
+                      probability={item.prediction_prob} 
+                      riskLevel={item.risk_level} 
+                      showDot={false}
+                      style={{ fontSize: '0.65rem', padding: '0.15rem 0.5rem' }}
+                    />
+                  </div>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.4, margin: 0 }}>
                       {item.analysis_text ? item.analysis_text.substring(0, 60) + '...' : `HR: ${item.heart_rate} | SpO2: ${item.spo2}%`}
                   </p>
                 </div>
-                {isRisk ? <AlertTriangle size={16} color="#ef4444" /> : <Activity size={16} color="#0ea5e9" />}
+                {config.tier === 'critical' ? (
+                  <ShieldAlert size={18} color={config.color} />
+                ) : config.tier === 'high' ? (
+                  <AlertTriangle size={18} color={config.color} />
+                ) : (
+                  <Activity size={18} color={config.color} />
+                )}
               </div>
             </div>
 
@@ -59,11 +74,12 @@ export const CareSchedule = ({ assessments = [] }: RecentActivityProps) => {
                position: 'absolute', 
                left: '60px', 
                top: '16px', 
-               width: '10px', 
-               height: '10px', 
+               width: '12px', 
+               height: '12px', 
                borderRadius: '50%', 
-               backgroundColor: isRisk ? '#ef4444' : 'var(--background)',
-               border: `2px solid ${isRisk ? '#ef4444' : 'var(--border)'}`,
+               backgroundColor: config.color,
+               border: '3px solid var(--background)',
+               boxShadow: `0 0 0 1px ${config.color}`,
                zIndex: 2
             }} />
           </div>

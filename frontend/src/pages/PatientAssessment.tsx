@@ -1,10 +1,13 @@
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Info, Activity } from 'lucide-react';
-import { createAssessment } from '../services/api';
+import { createAssessment, getPatients, type Patient } from '../services/api';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+
+import { getRiskConfig } from '../utils/riskBadge';
 
 const assessmentSchema = z.object({
   patient_id: z.coerce.number().min(1, "Patient ID is required"),
@@ -20,9 +23,11 @@ type AssessmentFormValues = z.infer<typeof assessmentSchema>;
 const PatientAssessment = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const initialPatientId = location.state?.patient_id || 1;
+  const initialPatientId = location.state?.patient_id ? Number(location.state.patient_id) : 1;
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [isLoadingPatients, setIsLoadingPatients] = useState(true);
 
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<AssessmentFormValues>({
+  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<AssessmentFormValues>({
     resolver: zodResolver(assessmentSchema) as any,
     defaultValues: {
       patient_id: initialPatientId,
@@ -35,22 +40,68 @@ const PatientAssessment = () => {
     }
   });
 
+  const watchedPatientId = watch("patient_id");
+
+  // Load patients and automatically select initial or first patient and sync room
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoadingPatients(true);
+    getPatients()
+      .then(list => {
+        if (!isMounted) return;
+        setPatients(list);
+        if (list.length > 0) {
+          const requestedId = location.state?.patient_id ? Number(location.state.patient_id) : null;
+          const targetPatient = (requestedId ? list.find(p => p.id === requestedId) : null) || list[0];
+          setValue("patient_id", targetPatient.id, { shouldValidate: true, shouldDirty: true });
+        }
+      })
+      .catch(err => {
+        console.error("Failed to load patients", err);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingPatients(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [location.state?.patient_id, setValue]);
+
+  // Determine current active patient (falls back to list[0] so it is NEVER blank or checking indefinitely)
+  const currentPatient = (
+    patients.find(p => p.id === Number(watchedPatientId)) ||
+    (location.state?.patient_id ? patients.find(p => p.id === Number(location.state.patient_id)) : null) ||
+    (patients.length > 0 ? patients[0] : null)
+  );
+
   const onSubmitForm = async (data: any) => {
     try {
         const result = await createAssessment(data as any);
+        const config = getRiskConfig(result.prediction_prob, result.risk_level);
         
         // Push a toast before navigating
-        if (result.risk_level === 'High Risk' || result.risk_level === 'Critical') {
-            toast.error(`CRITICAL ALERT: Model predicted ${result.risk_level}`, {
-                description: `Patient requires immediate attention. Confidence: ${(result.prediction_prob * 100).toFixed(1)}%`,
+        if (config.tier === 'critical') {
+            toast.error(`CRITICAL ALERT: Patient is Critical`, {
+                description: `Patient requires immediate medical intervention. Confidence: ${(result.prediction_prob * 100).toFixed(1)}%`,
                 duration: 8000
             });
+        } else if (config.tier === 'high') {
+            toast.error(`HIGH RISK ALERT: Model predicted ${result.risk_level}`, {
+                description: `Patient requires close telemetry monitoring. Confidence: ${(result.prediction_prob * 100).toFixed(1)}%`,
+                duration: 6000
+            });
+        } else if (config.tier === 'moderate') {
+            toast.warning(`MODERATE RISK: Model predicted ${result.risk_level}`, {
+                description: `Patient requires scheduled follow-up. Confidence: ${(result.prediction_prob * 100).toFixed(1)}%`,
+                duration: 5000
+            });
         } else {
-            toast.success("Assessment submitted successfully");
+            toast.success("Assessment submitted: Patient Stable");
         }
         
-        // Navigate to Risk Assessment page with the result data
-        navigate('/app/risk-assessment', { state: { result, vitals: data } });
+        // Navigate to Risk Assessment page with the result data and full patient context
+        navigate('/app/risk-assessment', { state: { result, vitals: data, patient: currentPatient } });
     } catch (err: any) {
         toast.error(err.message || "Failed to submit assessment");
     }
@@ -85,21 +136,117 @@ const PatientAssessment = () => {
         <div className="card" style={{ marginBottom: '1.5rem' }}>
           <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', color: 'var(--text-main)' }}>Patient Information</h3>
           
-          <div className="grid grid-cols-2">
+          <div className="grid grid-cols-2" style={{ gap: '1rem', alignItems: 'flex-start' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Patient ID *</label>
-              <input 
-                type="number" 
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Patient *</label>
+              <select 
+                id="patient-select"
                 className="input-field" 
-                {...register("patient_id")}
-              />
+                value={currentPatient?.id || ""}
+                onChange={(e) => {
+                  const id = Number(e.target.value);
+                  setValue("patient_id", id, { shouldValidate: true, shouldDirty: true });
+                }}
+                style={{
+                  height: '46px',
+                  fontWeight: 600,
+                  color: 'var(--text-main)',
+                  backgroundColor: 'var(--input-bg)'
+                }}
+              >
+                {isLoadingPatients && patients.length === 0 && (
+                  <option value="">Loading patients...</option>
+                )}
+                {patients.map(p => (
+                  <option key={p.id} value={p.id}>
+                    #{p.id} - {p.name} (Room {p.room_number || 'N/A'})
+                  </option>
+                ))}
+              </select>
               {errors.patient_id && <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.25rem' }}>{errors.patient_id.message}</p>}
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Room Number (Optional)</label>
-              <input type="text" className="input-field" placeholder="e.g. 101" />
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>Allotted Room</label>
+              <div style={{
+                height: '46px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0 1rem',
+                backgroundColor: 'rgba(14, 165, 233, 0.1)',
+                border: '1px solid rgba(14, 165, 233, 0.3)',
+                borderRadius: '8px',
+                color: '#0ea5e9',
+                fontWeight: 700,
+                fontSize: '0.95rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ 
+                    width: '8px', 
+                    height: '8px', 
+                    borderRadius: '50%', 
+                    backgroundColor: '#0ea5e9',
+                    boxShadow: '0 0 6px #0ea5e9'
+                  }} />
+                  <span>
+                    {currentPatient?.room_number 
+                      ? `Room ${currentPatient.room_number}` 
+                      : (isLoadingPatients ? 'Loading room...' : 'Room Unassigned')}
+                  </span>
+                </div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+                  Auto-Allotted
+                </span>
+              </div>
             </div>
           </div>
+
+          {currentPatient && (
+            <div style={{
+              marginTop: '1.25rem',
+              padding: '0.75rem 1rem',
+              backgroundColor: 'var(--background)',
+              border: '1px solid var(--border)',
+              borderRadius: '8px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '0.5rem',
+              fontSize: '0.85rem'
+            }}>
+              <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span>
+                  <strong style={{ color: 'var(--text-muted)' }}>Selected Patient:</strong>{' '}
+                  <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>{currentPatient.name}</span>
+                </span>
+                <span>
+                  <strong style={{ color: 'var(--text-muted)' }}>Patient ID:</strong>{' '}
+                  <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>#{currentPatient.id}</span>
+                </span>
+                <span>
+                  <strong style={{ color: 'var(--text-muted)' }}>Allotted Room:</strong>{' '}
+                  <span style={{ color: '#0ea5e9', fontWeight: 700 }}>Room {currentPatient.room_number || 'N/A'}</span>
+                </span>
+                <span>
+                  <strong style={{ color: 'var(--text-muted)' }}>Demographics:</strong>{' '}
+                  <span style={{ color: 'var(--text-main)' }}>
+                    {currentPatient.age} yrs, {currentPatient.gender === 'M' ? 'Male' : currentPatient.gender === 'F' ? 'Female' : currentPatient.gender}
+                  </span>
+                </span>
+              </div>
+              <span style={{
+                fontSize: '0.75rem',
+                color: '#22c55e',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem'
+              }}>
+                ✓ Auto-Loaded
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="card" style={{ marginBottom: '2rem' }}>
