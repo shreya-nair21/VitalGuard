@@ -143,6 +143,10 @@ class PrescriptionBase(SQLModel):
     frequency: str = Field(default="TDS (3x/day)")
     duration: Optional[str] = Field(default="3 days")
     instructions: Optional[str] = None
+    status: str = Field(default="ordered")
+    administered_at: Optional[datetime] = None
+    administered_by: Optional[str] = None
+    administration_notes: Optional[str] = None
 
 class Prescription(PrescriptionBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

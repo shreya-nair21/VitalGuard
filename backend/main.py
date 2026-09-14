@@ -141,6 +141,23 @@ async def lifespan(app: FastAPI):
     except ImportError:
         from .database import engine
 
+    # Auto-migrate prescription table for e-MAR columns if needed
+    try:
+        with engine.connect() as conn:
+            cols = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(prescription)").fetchall()]
+            if cols:
+                if "status" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE prescription ADD COLUMN status VARCHAR DEFAULT 'ordered'")
+                if "administered_at" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE prescription ADD COLUMN administered_at DATETIME")
+                if "administered_by" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE prescription ADD COLUMN administered_by VARCHAR")
+                if "administration_notes" not in cols:
+                    conn.exec_driver_sql("ALTER TABLE prescription ADD COLUMN administration_notes VARCHAR")
+                conn.commit()
+    except Exception as mig_err:
+        print(f"Warning during e-MAR column check: {mig_err}")
+
     with Session(engine) as session:
         default_docs = [
             {"username": "dr.lewis", "full_name": "Dr. Daniel Lewis", "email": "dr.lewis@vitalguard.com", "specialty": "General Medicine", "role": "doctor"},
@@ -965,10 +982,72 @@ def create_prescription(
         frequency=prescription.frequency,
         duration=prescription.duration,
         instructions=prescription.instructions,
+        status=getattr(prescription, "status", "ordered") or "ordered",
+        administered_at=getattr(prescription, "administered_at", None),
+        administered_by=getattr(prescription, "administered_by", None),
+        administration_notes=getattr(prescription, "administration_notes", None),
         created_at=prescription.created_at,
-        doctor_name=current_user.username,
+        doctor_name=format_doctor_display_name(current_user),
         patient_name=patient.name,
         room_number=patient.room_number
+    )
+
+class AdministerMedicationRequest(BaseModel):
+    administered_by: Optional[str] = None
+    notes: Optional[str] = None
+
+@app.post("/prescriptions/{prescription_id}/administer", response_model=PrescriptionRead)
+def administer_prescription(
+    prescription_id: int,
+    admin_in: Optional[AdministerMedicationRequest] = None,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    from datetime import datetime
+    presc = session.get(Prescription, prescription_id)
+    if not presc:
+        raise HTTPException(status_code=404, detail="Prescription not found")
+
+    giver_name = ""
+    if admin_in and admin_in.administered_by:
+        giver_name = admin_in.administered_by.strip()
+    if not giver_name:
+        giver_name = current_user.full_name or current_user.username
+
+    presc.status = "administered"
+    presc.administered_at = datetime.utcnow()
+    presc.administered_by = giver_name
+    if admin_in and admin_in.notes:
+        presc.administration_notes = admin_in.notes
+
+    session.add(presc)
+    session.commit()
+    session.refresh(presc)
+
+    doc = session.get(User, presc.doctor_id)
+    pat = session.get(Patient, presc.patient_id)
+
+    print(f"[e-MAR] Medication #{presc.id} ({presc.medication_name}) administered to Patient #{presc.patient_id} by {giver_name}")
+
+    return PrescriptionRead(
+        id=presc.id,
+        patient_id=presc.patient_id,
+        doctor_id=presc.doctor_id,
+        assignment_id=presc.assignment_id,
+        medication_name=presc.medication_name,
+        dosage=presc.dosage,
+        route=presc.route,
+        frequency=presc.frequency,
+        duration=presc.duration,
+        instructions=presc.instructions,
+        status=presc.status,
+        administered_at=presc.administered_at,
+        administered_by=presc.administered_by,
+        administration_notes=presc.administration_notes,
+        created_at=presc.created_at,
+        doctor_name=format_doctor_display_name(doc) if doc else "Staff Clinician",
+        patient_name=pat.name if pat else "Unknown",
+        room_number=pat.room_number if pat else None
     )
 
 @app.get("/prescriptions/", response_model=List[PrescriptionRead])
@@ -999,8 +1078,12 @@ def get_prescriptions(
             frequency=p.frequency,
             duration=p.duration,
             instructions=p.instructions,
+            status=getattr(p, "status", "ordered") or "ordered",
+            administered_at=getattr(p, "administered_at", None),
+            administered_by=getattr(p, "administered_by", None),
+            administration_notes=getattr(p, "administration_notes", None),
             created_at=p.created_at,
-            doctor_name=doc.username if doc else "Dr. Staff",
+            doctor_name=format_doctor_display_name(doc) if doc else "Staff Clinician",
             patient_name=patient.name if patient else "Unknown",
             room_number=patient.room_number if patient else None
         ))
@@ -1063,6 +1146,10 @@ def get_admin_emergency_triage(
                     "frequency": latest_presc.frequency,
                     "duration": latest_presc.duration,
                     "instructions": latest_presc.instructions,
+                    "status": getattr(latest_presc, "status", "ordered") or "ordered",
+                    "administered_at": getattr(latest_presc, "administered_at", None),
+                    "administered_by": getattr(latest_presc, "administered_by", None),
+                    "administration_notes": getattr(latest_presc, "administration_notes", None),
                     "doctor_name": format_doctor_display_name(presc_doc) if presc_doc else "Staff Clinician",
                     "created_at": latest_presc.created_at
                 }
@@ -1182,6 +1269,10 @@ def get_admin_emergency_triage(
             "frequency": p.frequency,
             "duration": p.duration,
             "instructions": p.instructions,
+            "status": getattr(p, "status", "ordered") or "ordered",
+            "administered_at": getattr(p, "administered_at", None),
+            "administered_by": getattr(p, "administered_by", None),
+            "administration_notes": getattr(p, "administration_notes", None),
             "patient_name": pat.name if pat else "Unknown",
             "room_number": pat.room_number if pat else None,
             "doctor_name": format_doctor_display_name(doc_presc) if doc_presc else "Staff Clinician",

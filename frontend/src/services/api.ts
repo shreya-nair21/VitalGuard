@@ -299,6 +299,10 @@ export interface Prescription extends PrescriptionCreate {
     doctor_name?: string;
     patient_name?: string;
     room_number?: string;
+    status?: 'ordered' | 'administered' | 'held' | 'discontinued';
+    administered_at?: string;
+    administered_by?: string;
+    administration_notes?: string;
 }
 
 export interface DoctorProfile {
@@ -348,6 +352,10 @@ export interface CriticalPatientRecord {
         frequency: string;
         duration?: string;
         instructions?: string;
+        status?: 'ordered' | 'administered' | 'held' | 'discontinued';
+        administered_at?: string;
+        administered_by?: string;
+        administration_notes?: string;
         doctor_name: string;
         created_at: string;
     };
@@ -483,4 +491,21 @@ export const adminReassignPatient = async (
     }
     return await res.json();
 };
+
+export const administerPrescription = async (
+    prescriptionId: number,
+    data?: { administered_by?: string; notes?: string }
+): Promise<Prescription> => {
+    const res = await fetch(`${API_URL}/prescriptions/${prescriptionId}/administer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify(data || {})
+    });
+    if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to record medication administration');
+    }
+    return await res.json();
+};
+
 

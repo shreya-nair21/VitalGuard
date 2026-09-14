@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ShieldAlert, Users, Pill, CheckCircle2, AlertTriangle, ArrowRight, Stethoscope, Clock, Volume2, VolumeX, UserCheck } from 'lucide-react';
-import { adminReassignPatient, type AdminEmergencyTriageData } from '../../services/api';
+import { adminReassignPatient, administerPrescription, type AdminEmergencyTriageData } from '../../services/api';
 import { isAudioEnabled, setAudioEnabled, playEscalationAlert, shouldChimeForAssignment } from '../../utils/audioAlert';
 import { toast } from 'sonner';
 
@@ -28,6 +28,33 @@ export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergenc
   const [reassigningPatientId, setReassigningPatientId] = useState<number | null>(null);
   const [selectedDoctorId, setSelectedDoctorId] = useState<number | null>(null);
   const [reassigning, setReassigning] = useState<boolean>(false);
+
+  // e-MAR Administration state
+  const [administeringPresc, setAdministeringPresc] = useState<{ id: number; medName: string; patientName: string } | null>(null);
+  const [nurseName, setNurseName] = useState<string>('Staff Nurse');
+  const [adminNotes, setAdminNotes] = useState<string>('');
+  const [submittingAdmin, setSubmittingAdmin] = useState<boolean>(false);
+
+  const handleAdminister = async () => {
+    if (!administeringPresc) return;
+    setSubmittingAdmin(true);
+    try {
+      await administerPrescription(administeringPresc.id, {
+        administered_by: nurseName.trim() || 'Staff Nurse',
+        notes: adminNotes.trim() || undefined
+      });
+      toast.success(`Administration recorded for ${administeringPresc.medName}`, {
+        description: `Verified by ${nurseName.trim() || 'Staff Nurse'}`
+      });
+      setAdministeringPresc(null);
+      setAdminNotes('');
+      if (onRefresh) onRefresh();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to record administration');
+    } finally {
+      setSubmittingAdmin(false);
+    }
+  };
 
   // Synchronize audio state across components
   useEffect(() => {
@@ -460,13 +487,84 @@ export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergenc
                 }}>
                   {cp.latest_suggestion ? (
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#4338ca', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.2rem' }}>
-                        <Stethoscope size={14} />
-                        Doctor's Order: {cp.latest_suggestion.medication_name} ({cp.latest_suggestion.dosage}) • {cp.latest_suggestion.frequency} by {formatClinicianName(cp.latest_suggestion.doctor_name)}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#4338ca', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <Stethoscope size={15} />
+                          Doctor's Order: {cp.latest_suggestion.medication_name} ({cp.latest_suggestion.dosage}) • {cp.latest_suggestion.frequency} by {formatClinicianName(cp.latest_suggestion.doctor_name)}
+                        </div>
+
+                        {/* e-MAR Status Badge & Action */}
+                        {cp.latest_suggestion.status === 'administered' ? (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.3rem',
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            backgroundColor: '#dcfce7',
+                            color: '#15803d',
+                            border: '1px solid #bbf7d0'
+                          }}>
+                            <CheckCircle2 size={13} color="#16a34a" />
+                            Administered by {cp.latest_suggestion.administered_by || 'Staff'} {cp.latest_suggestion.administered_at ? `(${new Date(cp.latest_suggestion.administered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : ''}
+                          </span>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.3rem',
+                              padding: '3px 8px',
+                              borderRadius: '4px',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              backgroundColor: '#fef3c7',
+                              color: '#b45309',
+                              border: '1px solid #fde68a'
+                            }}>
+                              <Clock size={12} />
+                              Pending Administration
+                            </span>
+
+                            <button
+                              onClick={() => setAdministeringPresc({
+                                id: cp.latest_suggestion!.id,
+                                medName: cp.latest_suggestion!.medication_name,
+                                patientName: cp.name
+                              })}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.3rem',
+                                padding: '3px 8px',
+                                borderRadius: '4px',
+                                backgroundColor: '#4338ca',
+                                color: '#ffffff',
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                border: 'none',
+                                cursor: 'pointer'
+                              }}
+                              title="Record bedside administration for this emergency order"
+                            >
+                              <Pill size={12} />
+                              Record Administration
+                            </button>
+                          </div>
+                        )}
                       </div>
+
                       <div style={{ fontSize: '0.85rem', color: '#3730a3', fontStyle: 'italic', fontWeight: 600 }}>
                         "{cp.latest_suggestion.instructions || 'Standard emergency monitoring'}"
                       </div>
+
+                      {cp.latest_suggestion.administration_notes && (
+                        <div style={{ fontSize: '0.75rem', color: '#166534', fontWeight: 600, marginTop: '0.2rem' }}>
+                          Bedside Note: {cp.latest_suggestion.administration_notes}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div style={{ fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
@@ -594,30 +692,223 @@ export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergenc
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '280px', overflowY: 'auto' }}>
-              {prescriptions.map((p) => (
-                <div key={p.id} style={{ padding: '0.75rem', backgroundColor: '#f8fafc', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.2rem' }}>
-                    <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#011e3b' }}>
-                      {p.medication_name} ({p.dosage})
-                    </span>
-                    <span style={{ fontSize: '0.7rem', color: '#4338ca', fontWeight: 700 }}>
-                      {p.room_number ? `Room ${p.room_number}` : p.patient_name}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                    {formatClinicianName(p.doctor_name)} • {p.frequency} ({p.route}) • {new Date(p.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                  {p.instructions && (
-                    <div style={{ fontSize: '0.75rem', color: '#475569', fontStyle: 'italic', marginTop: '0.2rem' }}>
-                      "{p.instructions}"
+              {prescriptions.map((p) => {
+                const isAdministered = p.status === 'administered';
+                return (
+                  <div key={p.id} style={{ padding: '0.75rem', backgroundColor: '#f8fafc', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.2rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#011e3b' }}>
+                        {p.medication_name} ({p.dosage})
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '0.7rem', color: '#4338ca', fontWeight: 700 }}>
+                          {p.room_number ? `Room ${p.room_number}` : p.patient_name}
+                        </span>
+
+                        {/* e-MAR Badge */}
+                        {isAdministered ? (
+                          <span style={{
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            padding: '2px 7px',
+                            borderRadius: '4px',
+                            backgroundColor: '#dcfce7',
+                            color: '#15803d',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem'
+                          }}>
+                            <CheckCircle2 size={11} color="#16a34a" />
+                            Administered
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => setAdministeringPresc({
+                              id: p.id,
+                              medName: p.medication_name,
+                              patientName: p.patient_name || 'Patient'
+                            })}
+                            style={{
+                              fontSize: '0.7rem',
+                              fontWeight: 700,
+                              padding: '2px 7px',
+                              borderRadius: '4px',
+                              backgroundColor: '#fef3c7',
+                              color: '#b45309',
+                              border: '1px solid #fde68a',
+                              cursor: 'pointer'
+                            }}
+                            title="Mark as administered by nurse"
+                          >
+                            Mark Administered
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
-              ))}
+                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      {formatClinicianName(p.doctor_name)} • {p.frequency} ({p.route}) • {new Date(p.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                    {p.instructions && (
+                      <div style={{ fontSize: '0.75rem', color: '#475569', fontStyle: 'italic', marginTop: '0.2rem' }}>
+                        "{p.instructions}"
+                      </div>
+                    )}
+                    {isAdministered && (p.administered_by || p.administered_at) && (
+                      <div style={{ fontSize: '0.72rem', color: '#166534', fontWeight: 600, marginTop: '0.25rem' }}>
+                        ✓ Given by {p.administered_by || 'Staff'} {p.administered_at ? `at ${new Date(p.administered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+                        {p.administration_notes ? ` • Note: ${p.administration_notes}` : ''}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
       </div>
+
+      {/* e-MAR Nurse Administration Modal */}
+      {administeringPresc && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(1, 30, 59, 0.45)',
+          backdropFilter: 'blur(3px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+          padding: '1rem'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '6px',
+            border: '1px solid #c7d2fe',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
+            maxWidth: '460px',
+            width: '100%',
+            padding: '1.5rem'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Pill size={20} color="#4338ca" />
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#011e3b' }}>
+                  Record Medication Administration (e-MAR)
+                </h3>
+              </div>
+            </div>
+
+            <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: '#64748b' }}>
+              Verify bedside medication administration for <strong>{administeringPresc.patientName}</strong>:
+            </p>
+
+            <div style={{
+              padding: '0.75rem',
+              backgroundColor: '#eef2ff',
+              borderRadius: '4px',
+              border: '1px solid #c7d2fe',
+              fontSize: '0.9rem',
+              fontWeight: 700,
+              color: '#312e81',
+              marginBottom: '1rem'
+            }}>
+              Order: {administeringPresc.medName}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '0.25rem' }}>
+                  Administered By (Nurse / Clinician Name):
+                </label>
+                <input
+                  type="text"
+                  value={nurseName}
+                  onChange={(e) => setNurseName(e.target.value)}
+                  placeholder="e.g. Nurse Rachel Green, RN"
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: '4px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.85rem',
+                    color: '#011e3b',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '0.25rem' }}>
+                  Administration Clinical Notes (Optional):
+                </label>
+                <textarea
+                  value={adminNotes}
+                  onChange={(e) => setAdminNotes(e.target.value)}
+                  placeholder="e.g. IV push given over 2 mins. Patient tolerated well, vitals monitored."
+                  rows={3}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: '4px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.85rem',
+                    color: '#011e3b',
+                    boxSizing: 'border-box',
+                    fontFamily: 'inherit'
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setAdministeringPresc(null);
+                  setAdminNotes('');
+                }}
+                disabled={submittingAdmin}
+                style={{
+                  padding: '7px 14px',
+                  borderRadius: '4px',
+                  backgroundColor: '#f1f5f9',
+                  color: '#475569',
+                  fontSize: '0.82rem',
+                  fontWeight: 700,
+                  border: '1px solid #cbd5e1',
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAdminister}
+                disabled={submittingAdmin}
+                style={{
+                  padding: '7px 16px',
+                  borderRadius: '4px',
+                  backgroundColor: '#16a34a',
+                  color: '#ffffff',
+                  fontSize: '0.82rem',
+                  fontWeight: 800,
+                  border: 'none',
+                  cursor: submittingAdmin ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem'
+                }}
+              >
+                <CheckCircle2 size={15} />
+                {submittingAdmin ? 'Logging...' : 'Confirm Administration'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

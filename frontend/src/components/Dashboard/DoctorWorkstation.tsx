@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ShieldAlert, Heart, Activity, Thermometer, Wind, Check, Pill, ChevronRight, FileText, CheckCircle2, AlertTriangle, Clock, XCircle, Volume2, VolumeX } from 'lucide-react';
-import { acknowledgeAssignment, declineAssignment, resolveAssignment, getPatientHistory, type DoctorAssignment, type AssessmentResponse } from '../../services/api';
+import { acknowledgeAssignment, declineAssignment, resolveAssignment, getPatientHistory, getPrescriptions, type DoctorAssignment, type AssessmentResponse, type Prescription } from '../../services/api';
 import { isAudioEnabled, setAudioEnabled, playEmergencyChime, shouldChimeForAssignment } from '../../utils/audioAlert';
 import { PrescriptionModal } from './PrescriptionModal';
 import { CareSchedule } from './CareSchedule';
@@ -29,6 +29,7 @@ export const DoctorWorkstation = ({
   // Specific assigned patient observation state
   const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
   const [patientAssessments, setPatientAssessments] = useState<AssessmentResponse[]>([]);
+  const [patientPrescriptions, setPatientPrescriptions] = useState<Prescription[]>([]);
 
   // Synchronize audio state across components
   useEffect(() => {
@@ -88,6 +89,23 @@ export const DoctorWorkstation = ({
       active = false;
     };
   }, [selectedPatientId]);
+
+  // Fetch e-MAR medication orders and administration status for the selected patient
+  useEffect(() => {
+    if (!selectedPatientId) {
+      setPatientPrescriptions([]);
+      return;
+    }
+    let active = true;
+    getPrescriptions(selectedPatientId)
+      .then((prescs) => {
+        if (active) setPatientPrescriptions(prescs || []);
+      })
+      .catch((err) => console.error('Failed to fetch patient prescriptions:', err));
+    return () => {
+      active = false;
+    };
+  }, [selectedPatientId, assignments]);
 
   const selectedAssignment = assignments.find(a => a.patient_id === selectedPatientId);
 
@@ -474,6 +492,90 @@ export const DoctorWorkstation = ({
                         <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#011e3b' }}>
                           {vitals.respiratory_rate} <span style={{ fontSize: '0.7rem', fontWeight: 500 }}>/min</span>
                         </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Latest Clinical Orders & Bedside Administration Tracking (e-MAR) */}
+                  {patientPrescriptions.length > 0 && (
+                    <div style={{
+                      padding: '0.85rem 1rem',
+                      backgroundColor: '#f8fafc',
+                      borderRadius: '4px',
+                      border: '1px solid #e2e8f0',
+                      marginBottom: '1.25rem'
+                    }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#4338ca', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.5rem' }}>
+                        <Pill size={14} /> Active Clinical Orders & e-MAR Bedside Status:
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {patientPrescriptions.slice(0, 2).map((p) => {
+                          const isAdministered = p.status === 'administered';
+                          return (
+                            <div key={p.id} style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              flexWrap: 'wrap',
+                              gap: '0.5rem',
+                              padding: '0.5rem 0.75rem',
+                              backgroundColor: '#ffffff',
+                              borderRadius: '4px',
+                              border: '1px solid',
+                              borderColor: isAdministered ? '#bbf7d0' : '#fde68a'
+                            }}>
+                              <div>
+                                <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#011e3b' }}>
+                                  {p.medication_name} ({p.dosage})
+                                </span>
+                                <span style={{ fontSize: '0.75rem', color: '#64748b', marginLeft: '0.4rem' }}>
+                                  • {p.frequency} ({p.route})
+                                </span>
+                                {p.instructions && (
+                                  <div style={{ fontSize: '0.75rem', color: '#475569', fontStyle: 'italic', marginTop: '0.15rem' }}>
+                                    "{p.instructions}"
+                                  </div>
+                                )}
+                              </div>
+
+                              <div>
+                                {isAdministered ? (
+                                  <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem',
+                                    padding: '3px 8px',
+                                    borderRadius: '4px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    backgroundColor: '#dcfce7',
+                                    color: '#15803d',
+                                    border: '1px solid #bbf7d0'
+                                  }}>
+                                    <CheckCircle2 size={12} color="#16a34a" />
+                                    Administered by {p.administered_by || 'Staff'} {p.administered_at ? `(${new Date(p.administered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : ''}
+                                  </span>
+                                ) : (
+                                  <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem',
+                                    padding: '3px 8px',
+                                    borderRadius: '4px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    backgroundColor: '#fef3c7',
+                                    color: '#b45309',
+                                    border: '1px solid #fde68a'
+                                  }}>
+                                    <Clock size={12} />
+                                    Ordered (Pending Bedside Administration)
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
