@@ -70,10 +70,10 @@ def select_best_available_doctor(session: Session, exclude_doctor_ids: Optional[
         if u.id not in exclude_doctor_ids
     ]
 
-    # 2. Fallback to any doctor not in exclude list if none strictly marked 'available'
+    # 2. Fallback to any doctor who is not off-duty if none strictly marked 'available'
     if not available_doctors:
         available_doctors = [
-            u for u in session.exec(select(User).where(User.role == "doctor")).all()
+            u for u in session.exec(select(User).where(User.role == "doctor", User.availability != "off_duty")).all()
             if u.id not in exclude_doctor_ids
         ]
 
@@ -562,29 +562,63 @@ def create_assessment(
     session.commit()
     session.refresh(db_assessment)
 
-    # Auto-assign to least-burdened available doctor if assessment is Critical
+    # 1. Check for Critical risk: Auto-dispatch to least-burdened doctor or update existing active dispatch
     if risk_level == "Critical" and db_assessment.patient_id:
         try:
-            doc = select_best_available_doctor(session)
-            if doc:
+            existing_active = session.exec(
+                select(DoctorAssignment)
+                .where(DoctorAssignment.patient_id == db_assessment.patient_id)
+                .where(DoctorAssignment.status.in_(["pending", "acknowledged", "escalated_admin"]))
+                .order_by(col(DoctorAssignment.created_at).desc())
+            ).first()
+
+            if existing_active:
+                # Deduplication: Patient already has an active emergency dispatch!
+                existing_active.assessment_id = db_assessment.id
                 patient = session.get(Patient, db_assessment.patient_id)
-                room = patient.room_number if patient else None
-                from datetime import datetime
-                assignment = DoctorAssignment(
-                    patient_id=db_assessment.patient_id,
-                    doctor_id=doc.id,
-                    assessment_id=db_assessment.id,
-                    room_number=room,
-                    status="pending",
-                    attempted_doctor_ids=str(doc.id),
-                    escalation_level=0,
-                    created_at=datetime.utcnow()
-                )
-                session.add(assignment)
+                if patient and patient.room_number:
+                    existing_active.room_number = patient.room_number
+                session.add(existing_active)
                 session.commit()
-                print(f"[Auto-Dispatch Load-Balanced] Patient {db_assessment.patient_id} (Room {room}) assigned to {format_doctor_display_name(doc)}")
+                print(f"[Auto-Dispatch Deduplicated] Updated active dispatch #{existing_active.id} for Patient {db_assessment.patient_id} with latest assessment #{db_assessment.id}")
+            else:
+                doc = select_best_available_doctor(session)
+                if doc:
+                    patient = session.get(Patient, db_assessment.patient_id)
+                    room = patient.room_number if patient else None
+                    from datetime import datetime
+                    assignment = DoctorAssignment(
+                        patient_id=db_assessment.patient_id,
+                        doctor_id=doc.id,
+                        assessment_id=db_assessment.id,
+                        room_number=room,
+                        status="pending",
+                        attempted_doctor_ids=str(doc.id),
+                        escalation_level=0,
+                        created_at=datetime.utcnow()
+                    )
+                    session.add(assignment)
+                    session.commit()
+                    print(f"[Auto-Dispatch Load-Balanced] Patient {db_assessment.patient_id} (Room {room}) assigned to {format_doctor_display_name(doc)}")
         except Exception as e:
             print(f"Auto-dispatch error: {e}")
+
+    # 2. Auto-resolve active critical dispatches if patient vitals stabilize
+    elif risk_level in ["Stable", "Moderate"] and db_assessment.patient_id:
+        try:
+            active_assignments = session.exec(
+                select(DoctorAssignment)
+                .where(DoctorAssignment.patient_id == db_assessment.patient_id)
+                .where(DoctorAssignment.status.in_(["pending", "acknowledged", "escalated_admin"]))
+            ).all()
+            for a in active_assignments:
+                a.status = "resolved"
+                session.add(a)
+            if active_assignments:
+                session.commit()
+                print(f"[Auto-Stabilized] Patient {db_assessment.patient_id} stabilized to {risk_level}. Auto-resolved {len(active_assignments)} emergency dispatches.")
+        except Exception as e:
+            print(f"Auto-stabilize resolution error: {e}")
 
     return db_assessment
 
@@ -833,13 +867,55 @@ def update_doctor_availability(
     if avail_in.availability not in ["available", "busy", "off_duty"]:
         raise HTTPException(status_code=400, detail="Invalid availability status. Must be available, busy, or off_duty.")
     
+    from datetime import datetime
+
     db_user = session.get(User, current_user.id)
     if db_user:
         db_user.availability = avail_in.availability
         session.add(db_user)
         session.commit()
         session.refresh(db_user)
-    return {"message": "Availability updated successfully", "availability": avail_in.availability}
+
+    rerouted_count = 0
+    if avail_in.availability in ["busy", "off_duty"]:
+        # Instant shift handoff: Find all pending emergency dispatches for this doctor
+        pending_assignments = session.exec(
+            select(DoctorAssignment)
+            .where(DoctorAssignment.doctor_id == current_user.id)
+            .where(DoctorAssignment.status == "pending")
+        ).all()
+
+        for assignment in pending_assignments:
+            attempted = [int(x.strip()) for x in (assignment.attempted_doctor_ids or "").split(",") if x.strip().isdigit()]
+            if current_user.id not in attempted:
+                attempted.append(current_user.id)
+
+            next_doctor = select_best_available_doctor(session, exclude_doctor_ids=attempted)
+            if next_doctor:
+                assignment.doctor_id = next_doctor.id
+                assignment.created_at = datetime.utcnow()
+                assignment.attempted_doctor_ids = ",".join(str(x) for x in attempted + [next_doctor.id])
+                assignment.escalation_level = (assignment.escalation_level or 0) + 1
+                session.add(assignment)
+                session.commit()
+                rerouted_count += 1
+                print(f"[Shift-Handoff] Re-routed pending dispatch #{assignment.id} from doctor #{current_user.id} to doctor #{next_doctor.id} ({format_doctor_display_name(next_doctor)})")
+            else:
+                admin_user = session.exec(select(User).where(User.role == "admin")).first()
+                if admin_user:
+                    assignment.doctor_id = admin_user.id
+                    assignment.status = "escalated_admin"
+                    assignment.escalation_level = (assignment.escalation_level or 0) + 1
+                    session.add(assignment)
+                    session.commit()
+                    rerouted_count += 1
+                    print(f"[Shift-Handoff] Escalated pending dispatch #{assignment.id} to Admin #{admin_user.id}")
+
+    return {
+        "message": "Availability updated successfully",
+        "availability": avail_in.availability,
+        "rerouted_dispatches": rerouted_count
+    }
 
 # --- Clinical E-Prescription Endpoints ---
 
