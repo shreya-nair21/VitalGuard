@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { ShieldAlert, Heart, Activity, Thermometer, Wind, Check, Pill, ChevronRight, FileText, CheckCircle2, AlertTriangle, Clock, XCircle } from 'lucide-react';
+import { ShieldAlert, Heart, Activity, Thermometer, Wind, Check, Pill, ChevronRight, FileText, CheckCircle2, AlertTriangle, Clock, XCircle, Volume2, VolumeX } from 'lucide-react';
 import { acknowledgeAssignment, declineAssignment, resolveAssignment, getPatientHistory, type DoctorAssignment, type AssessmentResponse } from '../../services/api';
+import { isAudioEnabled, setAudioEnabled, playEmergencyChime, shouldChimeForAssignment } from '../../utils/audioAlert';
 import { PrescriptionModal } from './PrescriptionModal';
 import { CareSchedule } from './CareSchedule';
 import { Link } from 'react-router-dom';
@@ -23,10 +24,33 @@ export const DoctorWorkstation = ({
 }: DoctorWorkstationProps) => {
   const [activePrescriptionAssignment, setActivePrescriptionAssignment] = useState<DoctorAssignment | null>(null);
   const [processingId, setProcessingId] = useState<number | null>(null);
+  const [audioActive, setAudioActive] = useState<boolean>(isAudioEnabled());
 
   // Specific assigned patient observation state
   const [selectedPatientId, setSelectedPatientId] = useState<number | null>(null);
   const [patientAssessments, setPatientAssessments] = useState<AssessmentResponse[]>([]);
+
+  // Synchronize audio state across components
+  useEffect(() => {
+    const handleToggle = (e: any) => {
+      setAudioActive(e.detail?.enabled ?? isAudioEnabled());
+    };
+    window.addEventListener('vitalguard-audio-toggle', handleToggle);
+    return () => window.removeEventListener('vitalguard-audio-toggle', handleToggle);
+  }, []);
+
+  // Play auditory emergency chime when a pending dispatch arrives
+  useEffect(() => {
+    if (!assignments || assignments.length === 0) return;
+    for (const a of assignments) {
+      if (a.status === 'pending') {
+        if (shouldChimeForAssignment(a.id, 'pending')) {
+          playEmergencyChime();
+          break;
+        }
+      }
+    }
+  }, [assignments]);
 
   // Automatically select the assigned patient
   useEffect(() => {
@@ -156,17 +180,45 @@ export const DoctorWorkstation = ({
           </p>
         </div>
 
-        {/* Duty Status Selector */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.75rem',
-          backgroundColor: '#ffffff',
-          padding: '0.5rem 1rem',
-          borderRadius: '4px',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-        }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {/* Audio Alerts Toggle */}
+          <button
+            onClick={() => {
+              const nextState = !audioActive;
+              setAudioActive(nextState);
+              setAudioEnabled(nextState);
+              toast.info(nextState ? 'Audio telemetry alerts enabled' : 'Audio alerts muted');
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '6px 12px',
+              borderRadius: '4px',
+              border: `1px solid ${audioActive ? '#bbf7d0' : '#e2e8f0'}`,
+              backgroundColor: audioActive ? '#f0fdf4' : '#f8fafc',
+              color: audioActive ? '#15803d' : '#64748b',
+              cursor: 'pointer',
+              fontSize: '0.8rem',
+              fontWeight: 700
+            }}
+            title="Toggle audible hospital telemetry alerts"
+          >
+            {audioActive ? <Volume2 size={15} color="#16a34a" /> : <VolumeX size={15} color="#94a3b8" />}
+            Audio: {audioActive ? 'Active' : 'Muted'}
+          </button>
+
+          {/* Duty Status Selector */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            backgroundColor: '#ffffff',
+            padding: '0.5rem 1rem',
+            borderRadius: '4px',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+          }}>
           <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Duty Status:
           </div>
@@ -236,6 +288,7 @@ export const DoctorWorkstation = ({
           </div>
         </div>
       </div>
+    </div>
 
       {/* SECTION 1: ASSIGNED CRITICAL PATIENTS & IMMEDIATE ACTION */}
       <div style={{ marginBottom: '2.5rem' }}>

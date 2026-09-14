@@ -314,6 +314,7 @@ export interface DoctorProfile {
 
 export interface CriticalPatientRecord {
     id: number;
+    assignment_id?: number;
     name: string;
     age: number;
     gender: string;
@@ -459,6 +460,27 @@ export const getAdminEmergencyTriage = async (): Promise<AdminEmergencyTriageDat
         headers: { ...getAuthHeader() }
     });
     if (!res.ok) throw new Error('Failed to fetch emergency triage oversight');
+    return await res.json();
+};
+
+export const adminReassignPatient = async (
+    patientId: number,
+    doctorId: number,
+    assignmentId?: number
+): Promise<{ message: string; assignment_id: number; doctor_name: string; doctor_id: number; status: string }> => {
+    const res = await fetch(`${API_URL}/admin/emergency-triage/reassign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify({
+            patient_id: patientId,
+            doctor_id: doctorId,
+            assignment_id: assignmentId
+        })
+    });
+    if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to reassign patient');
+    }
     return await res.json();
 };
 

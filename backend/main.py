@@ -1081,6 +1081,7 @@ def get_admin_emergency_triage(
 
             critical_patients.append({
                 "id": patient.id,
+                "assignment_id": active_assign.id if (active_assign and is_assigned) else None,
                 "name": patient.name,
                 "age": patient.age,
                 "gender": patient.gender,
@@ -1192,6 +1193,88 @@ def get_admin_emergency_triage(
         "active_dispatches": dispatches,
         "doctors_status": docs_status,
         "recent_prescriptions": recent_prescriptions
+    }
+
+class AdminReassignRequest(BaseModel):
+    patient_id: int
+    doctor_id: int
+    assignment_id: Optional[int] = None
+
+@app.post("/admin/emergency-triage/reassign")
+def admin_reassign_patient(
+    req: AdminReassignRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only administrators can manually reassign patients.")
+
+    target_doctor = session.get(User, req.doctor_id)
+    if not target_doctor or target_doctor.role != "doctor":
+        raise HTTPException(status_code=400, detail="Target clinician not found or is not an active doctor.")
+
+    patient = session.get(Patient, req.patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+
+    from datetime import datetime
+
+    assignment = None
+    if req.assignment_id:
+        assignment = session.get(DoctorAssignment, req.assignment_id)
+
+    if not assignment:
+        assignment = session.exec(
+            select(DoctorAssignment)
+            .where(DoctorAssignment.patient_id == req.patient_id)
+            .where(DoctorAssignment.status.in_(["pending", "acknowledged", "escalated_admin"]))
+            .order_by(col(DoctorAssignment.created_at).desc())
+        ).first()
+
+    if not assignment:
+        # Create fresh assignment for this patient
+        latest_assessment = session.exec(
+            select(Assessment)
+            .where(Assessment.patient_id == req.patient_id)
+            .order_by(col(Assessment.timestamp).desc())
+        ).first()
+
+        assignment = DoctorAssignment(
+            patient_id=req.patient_id,
+            doctor_id=target_doctor.id,
+            assessment_id=latest_assessment.id if latest_assessment else None,
+            room_number=patient.room_number,
+            status="pending",
+            attempted_doctor_ids=str(target_doctor.id),
+            escalation_level=0,
+            created_at=datetime.utcnow()
+        )
+        session.add(assignment)
+        session.commit()
+        session.refresh(assignment)
+    else:
+        attempted = [int(x.strip()) for x in (assignment.attempted_doctor_ids or "").split(",") if x.strip().isdigit()]
+        if target_doctor.id not in attempted:
+            attempted.append(target_doctor.id)
+
+        assignment.doctor_id = target_doctor.id
+        assignment.status = "pending"
+        assignment.created_at = datetime.utcnow()
+        assignment.attempted_doctor_ids = ",".join(str(x) for x in attempted)
+        assignment.escalation_level = 0
+        session.add(assignment)
+        session.commit()
+        session.refresh(assignment)
+
+    doc_name = format_doctor_display_name(target_doctor)
+    print(f"[Admin Override] Patient #{patient.id} ({patient.name}) manually reassigned to {doc_name}")
+
+    return {
+        "message": f"Patient successfully assigned to {doc_name}",
+        "assignment_id": assignment.id,
+        "doctor_name": doc_name,
+        "doctor_id": target_doctor.id,
+        "status": assignment.status
     }
 
 if __name__ == "__main__":

@@ -1,10 +1,14 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ShieldAlert, Users, Pill, CheckCircle2, AlertTriangle, ArrowRight, Stethoscope, Clock } from 'lucide-react';
-import type { AdminEmergencyTriageData } from '../../services/api';
+import { ShieldAlert, Users, Pill, CheckCircle2, AlertTriangle, ArrowRight, Stethoscope, Clock, Volume2, VolumeX, UserCheck } from 'lucide-react';
+import { adminReassignPatient, type AdminEmergencyTriageData } from '../../services/api';
+import { isAudioEnabled, setAudioEnabled, playEscalationAlert, shouldChimeForAssignment } from '../../utils/audioAlert';
+import { toast } from 'sonner';
 
 interface AdminEmergencyTriageProps {
   data: AdminEmergencyTriageData | null;
   loading: boolean;
+  onRefresh?: () => void;
 }
 
 const formatClinicianName = (name?: string) => {
@@ -19,7 +23,56 @@ const formatClinicianName = (name?: string) => {
   return `Dr. ${name}`;
 };
 
-export const AdminEmergencyTriage = ({ data, loading }: AdminEmergencyTriageProps) => {
+export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergencyTriageProps) => {
+  const [audioActive, setAudioActive] = useState<boolean>(isAudioEnabled());
+  const [reassigningPatientId, setReassigningPatientId] = useState<number | null>(null);
+  const [selectedDoctorId, setSelectedDoctorId] = useState<number | null>(null);
+  const [reassigning, setReassigning] = useState<boolean>(false);
+
+  // Synchronize audio state across components
+  useEffect(() => {
+    const handleToggle = (e: any) => {
+      setAudioActive(e.detail?.enabled ?? isAudioEnabled());
+    };
+    window.addEventListener('vitalguard-audio-toggle', handleToggle);
+    return () => window.removeEventListener('vitalguard-audio-toggle', handleToggle);
+  }, []);
+
+  // Play escalation audio alert when a patient reaches escalated_admin status
+  useEffect(() => {
+    if (!data?.critical_patients) return;
+    for (const cp of data.critical_patients) {
+      if (cp.is_escalated || cp.assignment_status === 'escalated_admin') {
+        const idToTrack = cp.assignment_id || cp.id;
+        if (shouldChimeForAssignment(idToTrack, 'escalated_admin')) {
+          playEscalationAlert();
+          break;
+        }
+      }
+    }
+  }, [data]);
+
+  const handleReassign = async (patientId: number, assignmentId?: number) => {
+    if (!selectedDoctorId) {
+      toast.error('Please select a doctor to assign');
+      return;
+    }
+    setReassigning(true);
+    try {
+      const res = await adminReassignPatient(patientId, selectedDoctorId, assignmentId);
+      toast.success(res.message, {
+        description: 'Response countdown timer has been reset for the assigned doctor.'
+      });
+      setReassigningPatientId(null);
+      setSelectedDoctorId(null);
+      if (onRefresh) onRefresh();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to reassign patient');
+    } finally {
+      setReassigning(false);
+    }
+  };
+
   if (loading && !data) {
     return (
       <div className="card" style={{ padding: '2rem', textAlign: 'center', color: '#64748b', marginBottom: '2rem' }}>
@@ -54,10 +107,38 @@ export const AdminEmergencyTriage = ({ data, loading }: AdminEmergencyTriageProp
             </p>
           </div>
         </div>
-        <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e', display: 'inline-block' }} />
-          Live Auto-Sync Active (4s polling)
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => {
+              const nextState = !audioActive;
+              setAudioActive(nextState);
+              setAudioEnabled(nextState);
+              toast.info(nextState ? 'Audio telemetry alerts enabled' : 'Audio alerts muted');
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '6px 12px',
+              borderRadius: '4px',
+              border: `1px solid ${audioActive ? '#bbf7d0' : '#e2e8f0'}`,
+              backgroundColor: audioActive ? '#f0fdf4' : '#f8fafc',
+              color: audioActive ? '#15803d' : '#64748b',
+              cursor: 'pointer',
+              fontSize: '0.8rem',
+              fontWeight: 700
+            }}
+            title="Toggle audible hospital telemetry alerts"
+          >
+            {audioActive ? <Volume2 size={15} color="#16a34a" /> : <VolumeX size={15} color="#94a3b8" />}
+            Audio Alerts: {audioActive ? 'Active' : 'Muted'}
+          </button>
+
+          <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e', display: 'inline-block' }} />
+            Live Auto-Sync Active (4s polling)
+          </span>
+        </div>
       </div>
 
       {/* SECTION 1: CRITICAL PATIENTS BOARD (Displays all critical patients e.g. 2 or more) */}
@@ -220,8 +301,127 @@ export const AdminEmergencyTriage = ({ data, loading }: AdminEmergencyTriageProp
                         Waiting for Available Doctor (Unassigned)
                       </span>
                     )}
+
+                    {/* Reassign Doctor Action Button */}
+                    <button
+                      onClick={() => {
+                        if (reassigningPatientId === cp.id) {
+                          setReassigningPatientId(null);
+                          setSelectedDoctorId(null);
+                        } else {
+                          setReassigningPatientId(cp.id);
+                          const firstAvail = doctors.find(d => d.availability === 'available' && d.id !== cp.doctor_id);
+                          setSelectedDoctorId(firstAvail ? firstAvail.id : (doctors[0]?.id || null));
+                        }
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        padding: '4px 10px',
+                        borderRadius: '4px',
+                        border: '1px solid #c7d2fe',
+                        backgroundColor: reassigningPatientId === cp.id ? '#4338ca' : '#eef2ff',
+                        color: reassigningPatientId === cp.id ? '#ffffff' : '#4338ca',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                      title="Override automatic allotment and assign this patient to a specific doctor"
+                    >
+                      <UserCheck size={13} />
+                      {reassigningPatientId === cp.id ? 'Cancel Reassign' : 'Reassign Doctor'}
+                    </button>
                   </div>
                 </div>
+
+                {/* Inline Reassignment Control Panel */}
+                {reassigningPatientId === cp.id && (
+                  <div style={{
+                    margin: '0.75rem 0',
+                    padding: '0.85rem 1rem',
+                    backgroundColor: '#eef2ff',
+                    borderRadius: '4px',
+                    border: '1.5px solid #818cf8',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.6rem'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#312e81', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <Stethoscope size={15} color="#4338ca" />
+                        Admin Override: Assign {cp.name} to Specialist / Clinician
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: '#6366f1', fontWeight: 600 }}>
+                        Current Clinician: {formatClinicianName(cp.doctor_name)}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <select
+                        value={selectedDoctorId ?? ''}
+                        onChange={(e) => setSelectedDoctorId(Number(e.target.value))}
+                        style={{
+                          flex: 1,
+                          minWidth: '240px',
+                          padding: '6px 10px',
+                          fontSize: '0.82rem',
+                          borderRadius: '4px',
+                          border: '1px solid #a5b4fc',
+                          backgroundColor: '#ffffff',
+                          color: '#011e3b',
+                          fontWeight: 600
+                        }}
+                      >
+                        {doctors.map((doc) => (
+                          <option key={doc.id} value={doc.id}>
+                            {doc.full_name} ({doc.specialty}) • {doc.availability.toUpperCase()} • Caseload: {doc.active_caseload}
+                          </option>
+                        ))}
+                      </select>
+
+                      <button
+                        onClick={() => handleReassign(cp.id, cp.assignment_id)}
+                        disabled={reassigning || !selectedDoctorId}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: '4px',
+                          backgroundColor: '#4338ca',
+                          color: '#ffffff',
+                          fontSize: '0.8rem',
+                          fontWeight: 800,
+                          border: 'none',
+                          cursor: reassigning ? 'not-allowed' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.4rem'
+                        }}
+                      >
+                        {reassigning ? 'Assigning...' : 'Confirm Assignment'}
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setReassigningPatientId(null);
+                          setSelectedDoctorId(null);
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '4px',
+                          backgroundColor: '#f1f5f9',
+                          color: '#475569',
+                          fontSize: '0.8rem',
+                          fontWeight: 700,
+                          border: '1px solid #cbd5e1',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Vitals Snapshot */}
                 {cp.vitals && (

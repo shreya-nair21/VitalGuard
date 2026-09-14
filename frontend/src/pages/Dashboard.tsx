@@ -154,6 +154,7 @@ const Dashboard = () => {
       <AdminEmergencyTriage 
         data={adminTriageData} 
         loading={loadingAdminTriage} 
+        onRefresh={fetchAdminData}
       />
 
       {/* Hospital Telemetry Overview */}
