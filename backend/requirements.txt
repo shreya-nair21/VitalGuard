@@ -8,6 +8,6 @@ pandas
 numpy
 scikit-learn
 joblib
-xgboost==1.7.3
-lightgbm==3.3.5
+xgboost
+lightgbm
 psycopg2-binary

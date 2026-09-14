@@ -124,12 +124,12 @@ const PatientHistory = () => {
                   <span style={{ color: 'var(--text-muted)' }}>Allotted Room:</span>
                   <span style={{
                     padding: '0.2rem 0.6rem',
-                    backgroundColor: 'rgba(14, 165, 233, 0.1)',
-                    color: '#0ea5e9',
+                    backgroundColor: 'rgba(67, 56, 202, 0.08)',
+                    color: '#4338ca',
                     borderRadius: '999px',
                     fontWeight: 600,
                     fontSize: '0.8rem',
-                    border: '1px solid rgba(14, 165, 233, 0.25)'
+                    border: '1px solid rgba(67, 56, 202, 0.18)'
                   }}>
                     Room {selectedPatient.room_number || 'N/A'}
                   </span>
@@ -140,7 +140,7 @@ const PatientHistory = () => {
 
           <div className="card" style={{ marginBottom: '1.5rem' }}>
             <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center' }}>
-              <Activity size={18} style={{ marginRight: '0.5rem', color: '#0ea5e9' }} />
+              <Activity size={18} style={{ marginRight: '0.5rem', color: '#4338ca' }} />
               Latest Vitals
             </h3>
             {assessments.length > 0 ? (

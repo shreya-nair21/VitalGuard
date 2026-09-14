@@ -123,9 +123,9 @@ const PatientAssessment = () => {
         display: 'flex',
         gap: '0.75rem'
       }}>
-        <Info color="#0ea5e9" size={24} style={{ flexShrink: 0 }} />
+        <Info color="#4338ca" size={24} style={{ flexShrink: 0 }} />
         <div>
-          <h4 style={{ color: '#0ea5e9', fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem' }}>AI Reliability Note</h4>
+          <h4 style={{ color: '#4338ca', fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem' }}>AI Reliability Note</h4>
           <p style={{ color: 'var(--text-main)', fontSize: '0.875rem' }}>
             Ensure all vitals are recorded within the last 15 minutes for the most accurate prediction results. Fields marked with * are required.
           </p>
@@ -173,10 +173,10 @@ const PatientAssessment = () => {
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 padding: '0 1rem',
-                backgroundColor: 'rgba(14, 165, 233, 0.1)',
-                border: '1px solid rgba(14, 165, 233, 0.3)',
+                backgroundColor: 'rgba(67, 56, 202, 0.08)',
+                border: '1px solid rgba(67, 56, 202, 0.25)',
                 borderRadius: '8px',
-                color: '#0ea5e9',
+                color: '#4338ca',
                 fontWeight: 700,
                 fontSize: '0.95rem'
               }}>
@@ -185,8 +185,8 @@ const PatientAssessment = () => {
                     width: '8px', 
                     height: '8px', 
                     borderRadius: '50%', 
-                    backgroundColor: '#0ea5e9',
-                    boxShadow: '0 0 6px #0ea5e9'
+                    backgroundColor: '#4338ca',
+                    boxShadow: '0 0 6px #4338ca'
                   }} />
                   <span>
                     {currentPatient?.room_number 
@@ -226,7 +226,7 @@ const PatientAssessment = () => {
                 </span>
                 <span>
                   <strong style={{ color: 'var(--text-muted)' }}>Allotted Room:</strong>{' '}
-                  <span style={{ color: '#0ea5e9', fontWeight: 700 }}>Room {currentPatient.room_number || 'N/A'}</span>
+                  <span style={{ color: '#4338ca', fontWeight: 700 }}>Room {currentPatient.room_number || 'N/A'}</span>
                 </span>
                 <span>
                   <strong style={{ color: 'var(--text-muted)' }}>Demographics:</strong>{' '}

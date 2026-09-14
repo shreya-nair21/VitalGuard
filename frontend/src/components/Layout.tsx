@@ -29,8 +29,8 @@ const Layout = () => {
       <aside className="sidebar">
         {/* ... (logo and nav) */}
         <div className="sidebar-logo">
-          <Activity size={28} color="#0ea5e9" />
-          VitalGuard
+          <Shield size={26} color="#4338ca" />
+          <span style={{ fontFamily: "serif", fontSize: '1.4rem', color: 'var(--text-main)' }}>VitalGuard</span>
         </div>
         
         <nav>

@@ -237,7 +237,7 @@ const PatientList = () => {
                                 <span style={{ 
                                     display: 'inline-block',
                                     padding: '0.25rem 0.65rem',
-                                    backgroundColor: '#0ea5e9',
+                                    backgroundColor: '#4338ca',
                                     color: '#fff',
                                     borderRadius: '999px',
                                     fontSize: '0.8rem',
@@ -365,8 +365,8 @@ const PatientList = () => {
                                     display: 'inline-flex', alignItems: 'center',
                                     padding: '0.3rem 0.75rem', borderRadius: '999px',
                                     fontSize: '0.8rem', fontWeight: 600,
-                                    backgroundColor: 'rgba(14, 165, 233, 0.1)', color: '#0ea5e9',
-                                    border: '1px solid rgba(14, 165, 233, 0.25)'
+                                    backgroundColor: 'rgba(67, 56, 202, 0.08)', color: '#4338ca',
+                                    border: '1px solid rgba(67, 56, 202, 0.18)'
                                 }}>
                                     Room {patient.room_number || 'N/A'}
                                 </span>

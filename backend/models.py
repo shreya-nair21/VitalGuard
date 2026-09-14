@@ -13,6 +13,16 @@ class User(UserBase, table=True):
     is_active: bool = Field(default=True)
     role: str = Field(default="doctor")  # Default role
 
+class UserCreate(UserBase):
+    hashed_password: str
+    role: Optional[str] = "doctor"
+    is_active: Optional[bool] = True
+
+class UserRead(UserBase):
+    id: int
+    role: str
+    is_active: bool
+
 class PatientBase(SQLModel):
     name: str = Field(index=True)
     age: int
@@ -30,6 +40,13 @@ class PatientCreate(SQLModel):
     name: str
     age: int
     gender: str = "M"
+    mrn: Optional[str] = None
+    room_number: Optional[str] = None
+
+class PatientUpdate(SQLModel):
+    name: Optional[str] = None
+    age: Optional[int] = None
+    gender: Optional[str] = None
     mrn: Optional[str] = None
     room_number: Optional[str] = None
 
@@ -66,7 +83,8 @@ class AssessmentCreate(AssessmentBase):
 
 class AssessmentRead(AssessmentBase):
     id: int
+    patient_id: Optional[int] = None
     risk_level: str
     prediction_prob: float
-    analysis_text: str
+    analysis_text: Optional[str] = None
     timestamp: datetime

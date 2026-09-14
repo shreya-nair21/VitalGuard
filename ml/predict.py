@@ -51,7 +51,7 @@ class VitalGuardPredictor:
             except:
                 print("Warning: Could not load test_results.joblib")
                 
-            print("✓ Model and preprocessor loaded successfully")
+            print("[OK] Model and preprocessor loaded successfully")
             
         except Exception as e:
             print(f"Error loading artifacts: {e}")

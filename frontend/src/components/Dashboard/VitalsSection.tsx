@@ -95,8 +95,8 @@ export const VitalsSection = ({ history = [] }: VitalsSectionProps) => {
          value={latest ? latest.spo2 : '--'} 
          unit="%" 
          icon={Droplet} 
-         color="#0ea5e9" 
-         chartColor="#0ea5e9" 
+         color="#4338ca" 
+         chartColor="#4338ca" 
          data={getChartData('spo2')}
        />
        <VitalCard 

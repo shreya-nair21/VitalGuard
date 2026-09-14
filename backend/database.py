@@ -1,8 +1,9 @@
 import os
 from sqlmodel import create_engine, SQLModel, Session
 
-sqlite_file_name = "vitalguard.db"
-sqlite_url = f"sqlite:///{sqlite_file_name}"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+default_sqlite_path = os.path.join(BASE_DIR, "vitalguard.db")
+sqlite_url = f"sqlite:///{default_sqlite_path.replace(os.sep, '/')}"
 
 # Use DATABASE_URL environment variable if it exists (for production)
 # otherwise fallback to local SQLite

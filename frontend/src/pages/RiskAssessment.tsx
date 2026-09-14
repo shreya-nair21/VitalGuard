@@ -149,15 +149,15 @@ const RiskAssessment = () => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',
-                padding: '0.55rem 1.1rem',
-                backgroundColor: '#0ea5e9',
+                padding: '0.55rem 1.2rem',
+                backgroundColor: '#4338ca',
                 color: 'white',
                 border: 'none',
-                borderRadius: '0.5rem',
+                borderRadius: '9999px',
                 cursor: 'pointer',
                 fontWeight: 600,
                 fontSize: '0.875rem',
-                boxShadow: '0 2px 6px rgba(14, 165, 233, 0.3)',
+                boxShadow: '0 2px 6px rgba(67, 56, 202, 0.25)',
                 transition: 'all 0.2s ease'
               }}
             >
@@ -202,7 +202,7 @@ const RiskAssessment = () => {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <User size={18} color="#0ea5e9" />
+            <User size={18} color="#4338ca" />
             <div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Patient Name</div>
               <strong style={{ fontSize: '0.95rem' }}>{patient?.name || `Patient #${vitals.patient_id}`}</strong>
@@ -210,17 +210,17 @@ const RiskAssessment = () => {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Bed size={18} color="#0ea5e9" />
+            <Bed size={18} color="#4338ca" />
             <div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Allotted Room</div>
               <span style={{ 
                 padding: '0.2rem 0.6rem', 
-                backgroundColor: 'rgba(14, 165, 233, 0.1)', 
-                color: '#0ea5e9', 
+                backgroundColor: 'rgba(67, 56, 202, 0.08)', 
+                color: '#4338ca', 
                 borderRadius: '999px', 
                 fontWeight: 700, 
                 fontSize: '0.8rem',
-                border: '1px solid rgba(14, 165, 233, 0.25)'
+                border: '1px solid rgba(67, 56, 202, 0.18)'
               }}>
                 Room {patient?.room_number || 'N/A'}
               </span>

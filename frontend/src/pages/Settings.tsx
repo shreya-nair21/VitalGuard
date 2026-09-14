@@ -194,7 +194,7 @@ const Settings = () => {
                             <span style={{ 
                                 padding: '0.25rem 0.75rem', 
                                 borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600,
-                                backgroundColor: user.role === 'admin' ? 'rgba(245, 158, 11, 0.1)' : 'rgba(14, 165, 233, 0.1)',
+                                backgroundColor: user.role === 'admin' ? 'rgba(245, 158, 11, 0.1)' : 'var(--primary-light)',
                                 color: user.role === 'admin' ? 'var(--warning)' : 'var(--primary)'
                             }}>
                                 {user.role.toUpperCase()}

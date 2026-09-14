@@ -44,9 +44,9 @@ const Dashboard = () => {
         marginBottom: '2rem' 
       }}>
         <div>
-          <h1 style={{ fontSize: '3rem', fontWeight: 700, letterSpacing: '-1.5px', lineHeight: 1.1 }}>
+          <h1 style={{ fontSize: '2.4rem', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.2, color: 'var(--text-main)' }}>
             Hi {user?.name || 'Doctor'}!<br />
-            <span style={{ color: 'var(--text-muted)' }}>How are you feeling today?</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: '1.15rem', fontWeight: 400 }}>How are you feeling today?</span>
           </h1>
         </div>
       </div>
@@ -104,7 +104,7 @@ const Dashboard = () => {
                 <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.25rem' }}>
                     {new Date(latestAssessment.timestamp).toLocaleString()}
                 </div>
-                <Link to="/app/risk-assessment" state={{ result: latestAssessment, vitals: latestAssessment }} style={{ color: '#0ea5e9', fontWeight: 600, fontSize: '0.875rem' }}>
+                <Link to="/app/risk-assessment" state={{ result: latestAssessment, vitals: latestAssessment }} style={{ color: '#4338ca', fontWeight: 600, fontSize: '0.875rem', textDecoration: 'none' }}>
                     View Full Report →
                 </Link>
             </div>
