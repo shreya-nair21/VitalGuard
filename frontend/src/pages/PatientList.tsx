@@ -9,6 +9,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { RiskBadge } from '../utils/riskBadge';
+import { useAuth } from '../context/AuthContext';
 
 // Zod Schema (Healthcare workers only fill Name, Age, Gender)
 const patientSchema = z.object({
@@ -70,6 +71,8 @@ const PatientStatusBadge = ({ patientId }: { patientId: number }) => {
 
 const PatientList = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [searchTerm, setSearchTerm] = useState('');
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -180,20 +183,24 @@ const PatientList = () => {
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <div>
           <h1 className="page-title" style={{ fontSize: '1.875rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.5rem' }}>Patient Records</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>Manage and view patient status across all departments.</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+            {isAdmin ? 'Manage and view patient status across all departments.' : 'Directory of admitted hospital patients and their telemetry records.'}
+          </p>
         </div>
-        <button 
-            className="btn btn-primary" 
-            onClick={openCreateForm}
-            style={{ 
-                display: 'flex', alignItems: 'center', gap: '0.5rem',
-                padding: '0.75rem 1.5rem', fontSize: '0.875rem', fontWeight: 600,
-                borderRadius: '999px', boxShadow: 'var(--shadow)'
-            }}
-        >
-          <UserPlus size={18} />
-          Add New Patient
-        </button>
+        {isAdmin && (
+          <button 
+              className="btn btn-primary" 
+              onClick={openCreateForm}
+              style={{ 
+                  display: 'flex', alignItems: 'center', gap: '0.5rem',
+                  padding: '0.75rem 1.5rem', fontSize: '0.875rem', fontWeight: 600,
+                  borderRadius: '999px', boxShadow: 'var(--shadow)'
+              }}
+          >
+            <UserPlus size={18} />
+            Add New Patient
+          </button>
+        )}
       </div>
 
       {showForm && (
@@ -395,33 +402,37 @@ const PatientList = () => {
                                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                                     <button 
                                         onClick={() => navigate('/app/history', { state: { patient_id: patient.id } })}
-                                        className="btn" 
-                                        style={{ padding: '0.4rem 1rem', fontSize: '0.75rem', fontWeight: 600, backgroundColor: 'var(--input-bg)', color: 'var(--text-main)', borderRadius: '999px' }}
-                                    >
-                                        History
-                                    </button>
-                                    <button 
-                                        onClick={() => navigate('/app/assessment', { state: { patient_id: patient.id } })}
                                         className="btn btn-primary" 
-                                        style={{ padding: '0.4rem 1rem', fontSize: '0.75rem', fontWeight: 600, borderRadius: '999px', boxShadow: 'var(--shadow-sm)' }}
+                                        style={{ padding: '0.4rem 1rem', fontSize: '0.75rem', fontWeight: 600, borderRadius: '999px' }}
                                     >
-                                        Assess
+                                        View Telemetry
                                     </button>
-                                    <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border)', margin: '0 0.5rem' }}></div>
-                                    <button 
-                                        onClick={() => openEditForm(patient)}
-                                        style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--secondary)', display: 'flex', padding: '0.25rem' }}
-                                        title="Edit Patient"
-                                    >
-                                        <Edit3 size={16} />
-                                    </button>
-                                    <button 
-                                        onClick={() => handleDelete(patient.id)}
-                                        style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--danger)', display: 'flex', padding: '0.25rem' }}
-                                        title="Delete Patient"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
+                                    {isAdmin && (
+                                      <>
+                                        <button 
+                                            onClick={() => navigate('/app/assessment', { state: { patient_id: patient.id } })}
+                                            className="btn" 
+                                            style={{ padding: '0.4rem 1rem', fontSize: '0.75rem', fontWeight: 600, borderRadius: '999px', backgroundColor: 'var(--input-bg)', color: 'var(--text-main)' }}
+                                        >
+                                            Assess
+                                        </button>
+                                        <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border)', margin: '0 0.5rem' }}></div>
+                                        <button 
+                                            onClick={() => openEditForm(patient)}
+                                            style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--secondary)', display: 'flex', padding: '0.25rem' }}
+                                            title="Edit Patient"
+                                        >
+                                            <Edit3 size={16} />
+                                        </button>
+                                        <button 
+                                            onClick={() => handleDelete(patient.id)}
+                                            style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--danger)', display: 'flex', padding: '0.25rem' }}
+                                            title="Delete Patient"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                      </>
+                                    )}
                                 </div>
                             </td>
                         </motion.tr>

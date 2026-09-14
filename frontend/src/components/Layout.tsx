@@ -42,13 +42,15 @@ const Layout = () => {
             <Users size={20} />
             Patient Records
           </NavLink>
-          <NavLink to="/app/assessment" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-            <Activity size={20} />
-            New Assessment
-          </NavLink>
+          {user?.role === 'admin' && (
+            <NavLink to="/app/assessment" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+              <Activity size={20} />
+              New Assessment
+            </NavLink>
+          )}
           <NavLink to="/app/history" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
             <Bell size={20} />
-            History/Alerts
+            {user?.role === 'doctor' ? 'Telemetry & History' : 'History/Alerts'}
           </NavLink>
         </nav>
 

@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Activity, Clock, AlertTriangle, CheckCircle, ShieldAlert } from 'lucide-react';
-import { getPatientHistory, getPatients, type AssessmentResponse, type Patient } from '../services/api';
+import { Activity, Clock, AlertTriangle, CheckCircle, ShieldAlert, Stethoscope } from 'lucide-react';
+import { getPatientHistory, getPatients, getPrescriptions, type AssessmentResponse, type Patient, type Prescription } from '../services/api';
 import { getRiskConfig, RiskBadge } from '../utils/riskBadge';
 
 const PatientHistory = () => {
   const location = useLocation();
   const [assessments, setAssessments] = useState<AssessmentResponse[]>([]);
+  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -32,14 +33,19 @@ const PatientHistory = () => {
     const fetchHistory = async () => {
         setLoading(true);
         try {
-            const data = await getPatientHistory(selectedPatientId);
+            const [historyData, prescData] = await Promise.all([
+                getPatientHistory(selectedPatientId),
+                getPrescriptions(selectedPatientId)
+            ]);
             // Sort by timestamp desc
-            const sorted = data.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            const sorted = historyData.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
             setAssessments(sorted);
+            setPrescriptions(prescData);
             setError(null);
         } catch (err: any) {
             setError(err.message || "Failed to load history");
             setAssessments([]);
+            setPrescriptions([]);
         } finally {
             setLoading(false);
         }
@@ -161,6 +167,56 @@ const PatientHistory = () => {
         </div>
 
         <div style={{ flex: 1 }}>
+           {/* Doctor's Immediate Suggestions & Prescriptions Section */}
+           {prescriptions.length > 0 && (
+             <div className="card" style={{ marginBottom: '2rem', border: '2px solid #c7d2fe', backgroundColor: '#f5f3ff', padding: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                   <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#4338ca', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Stethoscope size={20} />
+                      Doctor's Clinical Suggestions & Prescribed Immediate Steps
+                   </h3>
+                   <span style={{ fontSize: '0.75rem', fontWeight: 700, backgroundColor: '#4338ca', color: '#ffffff', padding: '2px 8px', borderRadius: '4px' }}>
+                      {prescriptions.length} Orders
+                   </span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                   {prescriptions.map((presc) => (
+                      <div key={presc.id} style={{ backgroundColor: '#ffffff', padding: '1rem', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.4rem' }}>
+                            <div>
+                               <span style={{ fontWeight: 800, fontSize: '1rem', color: '#011e3b', marginRight: '0.5rem' }}>
+                                  {presc.medication_name} ({presc.dosage})
+                               </span>
+                               <span style={{ fontSize: '0.75rem', fontWeight: 700, backgroundColor: '#eef2ff', color: '#4338ca', padding: '2px 6px', borderRadius: '4px' }}>
+                                  {presc.frequency} • {presc.route}
+                               </span>
+                            </div>
+                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                               Prescribed by <strong>Dr. {presc.doctor_name || 'Staff'}</strong> • {new Date(presc.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                            </span>
+                         </div>
+
+                         {presc.instructions ? (
+                            <div style={{ marginTop: '0.5rem', padding: '0.6rem 0.8rem', backgroundColor: '#fffbeb', borderRadius: '4px', border: '1px solid #fde68a' }}>
+                               <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#b45309', textTransform: 'uppercase', marginBottom: '0.15rem' }}>
+                                  Immediate Clinical Advice / Instructions:
+                               </div>
+                               <p style={{ margin: 0, fontSize: '0.85rem', color: '#78350f', fontWeight: 600 }}>
+                                  "{presc.instructions}"
+                                </p>
+                            </div>
+                         ) : (
+                            <div style={{ fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic', marginTop: '0.25rem' }}>
+                               Standard administration protocol applied.
+                            </div>
+                         )}
+                      </div>
+                   ))}
+                </div>
+             </div>
+           )}
+
            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1.5rem', display: 'flex', alignItems: 'center' }}>
              <Clock size={24} style={{ marginRight: '0.75rem' }} />
              Assessment Timeline

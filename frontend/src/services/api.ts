@@ -248,3 +248,217 @@ export const getDashboardStats = async (): Promise<DashboardStats> => {
 export const predictRisk = async (vitals: any) => {
     return createAssessment({ ...vitals, patient_id: 1 }); // Fallback
 };
+
+// --- Emergency Clinical Dispatch & Prescription Interfaces ---
+
+export interface DoctorAssignment {
+    id: number;
+    patient_id: number;
+    doctor_id: number;
+    assessment_id?: number;
+    room_number?: string;
+    status: 'pending' | 'acknowledged' | 'resolved' | 'escalated_admin';
+    created_at: string;
+    acknowledged_at?: string;
+    patient_name?: string;
+    patient_age?: number;
+    patient_gender?: string;
+    patient_mrn?: string;
+    doctor_name?: string;
+    doctor_full_name?: string;
+    doctor_specialty?: string;
+    seconds_remaining?: number;
+    escalation_level?: number;
+    vitals?: {
+        heart_rate: number;
+        systolic_bp: number;
+        respiratory_rate: number;
+        temperature: number;
+        spo2: number;
+        consciousness: string;
+        risk_level: string;
+        prediction_prob: number;
+    };
+}
+
+export interface PrescriptionCreate {
+    patient_id: number;
+    assignment_id?: number;
+    medication_name: string;
+    dosage: string;
+    route?: string;
+    frequency?: string;
+    duration?: string;
+    instructions?: string;
+}
+
+export interface Prescription extends PrescriptionCreate {
+    id: number;
+    doctor_id: number;
+    created_at: string;
+    doctor_name?: string;
+    patient_name?: string;
+    room_number?: string;
+}
+
+export interface DoctorProfile {
+    id: number;
+    username: string;
+    full_name?: string;
+    email: string;
+    role: string;
+    specialty?: string;
+    availability: 'available' | 'busy' | 'off_duty';
+    active_caseload?: number;
+}
+
+export interface CriticalPatientRecord {
+    id: number;
+    name: string;
+    age: number;
+    gender: string;
+    mrn: string;
+    room_number?: string;
+    is_assigned: boolean;
+    doctor_id?: number;
+    doctor_name?: string;
+    doctor_specialty?: string;
+    assignment_status: 'pending' | 'acknowledged' | 'resolved' | 'unassigned' | 'escalated_admin';
+    assigned_at?: string;
+    seconds_remaining?: number;
+    escalation_level?: number;
+    is_escalated?: boolean;
+    vitals: {
+        heart_rate: number;
+        systolic_bp: number;
+        spo2: number;
+        temperature: number;
+        respiratory_rate: number;
+        consciousness?: string;
+        risk_level: string;
+        prediction_prob: number;
+        timestamp?: string;
+    };
+    latest_suggestion?: {
+        id: number;
+        medication_name: string;
+        dosage: string;
+        route: string;
+        frequency: string;
+        duration?: string;
+        instructions?: string;
+        doctor_name: string;
+        created_at: string;
+    };
+}
+
+export interface AdminEmergencyTriageData {
+    critical_patients: CriticalPatientRecord[];
+    active_dispatches: DoctorAssignment[];
+    doctors_status: DoctorProfile[];
+    recent_prescriptions: Prescription[];
+}
+
+// --- Emergency & Prescription API Calls ---
+
+export const getDoctors = async (): Promise<DoctorProfile[]> => {
+    const res = await fetch(`${API_URL}/doctors`, {
+        headers: { ...getAuthHeader() }
+    });
+    if (!res.ok) throw new Error('Failed to fetch doctors');
+    return await res.json();
+};
+
+export const getDoctorAssignments = async (statusFilter?: string): Promise<DoctorAssignment[]> => {
+    const url = statusFilter ? `${API_URL}/doctor/assignments?status_filter=${statusFilter}` : `${API_URL}/doctor/assignments`;
+    const res = await fetch(url, {
+        headers: { ...getAuthHeader() }
+    });
+    if (!res.ok) throw new Error('Failed to fetch doctor assignments');
+    return await res.json();
+};
+
+export const acknowledgeAssignment = async (id: number): Promise<{ message: string; status: string }> => {
+    const res = await fetch(`${API_URL}/doctor/assignments/${id}/acknowledge`, {
+        method: 'POST',
+        headers: { ...getAuthHeader() }
+    });
+    if (!res.ok) throw new Error('Failed to acknowledge assignment');
+    return await res.json();
+};
+
+export const declineAssignment = async (id: number): Promise<{ message: string; status: string; new_doctor?: string }> => {
+    const res = await fetch(`${API_URL}/doctor/assignments/${id}/decline`, {
+        method: 'POST',
+        headers: { ...getAuthHeader() }
+    });
+    if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to decline assignment');
+    }
+    return await res.json();
+};
+
+export const resolveAssignment = async (id: number): Promise<{ message: string }> => {
+    const res = await fetch(`${API_URL}/doctor/assignments/${id}/resolve`, {
+        method: 'POST',
+        headers: { ...getAuthHeader() }
+    });
+    if (!res.ok) throw new Error('Failed to resolve assignment');
+    return await res.json();
+};
+
+export const getDoctorAvailability = async (): Promise<{ username: string; role: string; specialty: string; availability: string }> => {
+    const res = await fetch(`${API_URL}/doctor/availability`, {
+        headers: { ...getAuthHeader() }
+    });
+    if (!res.ok) throw new Error('Failed to get availability');
+    return await res.json();
+};
+
+export const updateDoctorAvailability = async (availability: 'available' | 'busy' | 'off_duty'): Promise<{ message: string; availability: string }> => {
+    const res = await fetch(`${API_URL}/doctor/availability`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeader()
+        },
+        body: JSON.stringify({ availability })
+    });
+    if (!res.ok) throw new Error('Failed to update availability');
+    return await res.json();
+};
+
+export const createPrescription = async (data: PrescriptionCreate): Promise<Prescription> => {
+    const res = await fetch(`${API_URL}/prescriptions/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeader()
+        },
+        body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to create prescription');
+    }
+    return await res.json();
+};
+
+export const getPrescriptions = async (patientId?: number): Promise<Prescription[]> => {
+    const url = patientId ? `${API_URL}/prescriptions/?patient_id=${patientId}` : `${API_URL}/prescriptions/`;
+    const res = await fetch(url, {
+        headers: { ...getAuthHeader() }
+    });
+    if (!res.ok) throw new Error('Failed to fetch prescriptions');
+    return await res.json();
+};
+
+export const getAdminEmergencyTriage = async (): Promise<AdminEmergencyTriageData> => {
+    const res = await fetch(`${API_URL}/admin/emergency-triage`, {
+        headers: { ...getAuthHeader() }
+    });
+    if (!res.ok) throw new Error('Failed to fetch emergency triage oversight');
+    return await res.json();
+};
+
