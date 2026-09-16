@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldAlert, Heart, Activity, Thermometer, Wind, Check, Pill, CheckCircle2, ChevronRight } from 'lucide-react';
 import { acknowledgeAssignment, resolveAssignment, type DoctorAssignment } from '../../services/api';
+import { formatISTTime } from '../../utils/dateUtils';
 import { PrescriptionModal } from './PrescriptionModal';
 import { toast } from 'sonner';
 
@@ -101,7 +102,7 @@ export const DoctorEmergencyBanner = ({ assignments, onRefresh }: DoctorEmergenc
                         {isPending ? 'CRITICAL DISPATCH • ACTION REQUIRED' : 'IN ATTENDANCE'}
                       </span>
                       <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                        Dispatched {new Date(assignment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        Dispatched {formatISTTime(assignment.created_at, { includeZone: true })}
                       </span>
                     </div>
                     <h3 style={{ margin: '0.25rem 0 0', fontSize: '1.25rem', fontWeight: 800, color: '#011e3b' }}>

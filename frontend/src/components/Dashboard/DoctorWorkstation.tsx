@@ -6,6 +6,8 @@ import { PrescriptionModal } from './PrescriptionModal';
 import { CareSchedule } from './CareSchedule';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
+import { formatClinicianName } from '../../utils/formatDoctorName';
+import { formatISTTime } from '../../utils/dateUtils';
 
 interface DoctorWorkstationProps {
   doctorName: string;
@@ -109,14 +111,7 @@ export const DoctorWorkstation = ({
 
   const selectedAssignment = assignments.find(a => a.patient_id === selectedPatientId);
 
-  const formattedDoctorTitle = (() => {
-    if (!doctorName) return 'Dr. Clinician';
-    if (doctorName.toLowerCase().startsWith('dr.')) {
-      const rest = doctorName.slice(3).trim();
-      return `Dr. ${rest.charAt(0).toUpperCase() + rest.slice(1)}`;
-    }
-    return `Dr. ${doctorName}`;
-  })();
+  const formattedDoctorTitle = formatClinicianName(doctorName);
 
   const handleAcknowledge = async (id: number) => {
     setProcessingId(id);
@@ -184,18 +179,9 @@ export const DoctorWorkstation = ({
         gap: '1rem'
       }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: 800, backgroundColor: '#4338ca', color: '#ffffff', padding: '2px 8px', borderRadius: '4px' }}>
-              CLINICIAN WORKSTATION
-            </span>
-            <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Department: General Medicine</span>
-          </div>
-          <h1 style={{ fontSize: '2.2rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-main)', margin: '0.25rem 0 0' }}>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text-main)', margin: 0 }}>
             {formattedDoctorTitle}
           </h1>
-          <p style={{ margin: '0.25rem 0 0', color: 'var(--text-muted)', fontSize: '0.95rem' }}>
-            Review assigned critical patients, inspect full telemetry history, and issue immediate orders.
-          </p>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -380,7 +366,7 @@ export const DoctorWorkstation = ({
                             {isPending ? 'CRITICAL DISPATCH • ACTION REQUIRED' : 'IN ATTENDANCE'}
                           </span>
                           <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                            Dispatched {new Date(assignment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            Dispatched {formatISTTime(assignment.created_at, { includeZone: true })}
                           </span>
                           {isPending && assignment.seconds_remaining !== undefined && (
                             <span style={{
@@ -396,7 +382,9 @@ export const DoctorWorkstation = ({
                               fontWeight: 700
                             }}>
                               <Clock size={12} />
-                              Auto-escalates in: {assignment.seconds_remaining}s
+                              Auto-escalates in: {assignment.seconds_remaining >= 60
+                                ? `${Math.floor(assignment.seconds_remaining / 60)}m ${assignment.seconds_remaining % 60}s`
+                                : `${assignment.seconds_remaining}s`}
                             </span>
                           )}
                         </div>
@@ -553,7 +541,7 @@ export const DoctorWorkstation = ({
                                     border: '1px solid #bbf7d0'
                                   }}>
                                     <CheckCircle2 size={12} color="#16a34a" />
-                                    Administered by {p.administered_by || 'Staff'} {p.administered_at ? `(${new Date(p.administered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : ''}
+                                    Administered by {p.administered_by || 'Staff'} {p.administered_at ? `(${formatISTTime(p.administered_at, { includeZone: true })})` : ''}
                                   </span>
                                 ) : (
                                   <span style={{

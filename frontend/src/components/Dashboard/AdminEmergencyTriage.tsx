@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ShieldAlert, Users, Pill, CheckCircle2, AlertTriangle, ArrowRight, Stethoscope, Clock, Volume2, VolumeX, UserCheck } from 'lucide-react';
+import { Users, Pill, CheckCircle2, AlertTriangle, ArrowRight, Stethoscope, Clock, UserCheck } from 'lucide-react';
 import { adminReassignPatient, administerPrescription, type AdminEmergencyTriageData } from '../../services/api';
-import { isAudioEnabled, setAudioEnabled, playEscalationAlert, shouldChimeForAssignment } from '../../utils/audioAlert';
+import { playEscalationAlert, shouldChimeForAssignment } from '../../utils/audioAlert';
 import { toast } from 'sonner';
 
 interface AdminEmergencyTriageProps {
@@ -11,20 +11,10 @@ interface AdminEmergencyTriageProps {
   onRefresh?: () => void;
 }
 
-const formatClinicianName = (name?: string) => {
-  if (!name) return 'Staff Clinician';
-  if (name.includes('Chief Medical Officer') || name.includes('Admin')) {
-    return name;
-  }
-  if (name.toLowerCase().startsWith('dr.')) {
-    const cleaned = name.slice(3).trim();
-    return `Dr. ${cleaned.charAt(0).toUpperCase() + cleaned.slice(1)}`;
-  }
-  return `Dr. ${name}`;
-};
+import { formatClinicianName } from '../../utils/formatDoctorName';
+import { formatISTTime } from '../../utils/dateUtils';
 
 export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergencyTriageProps) => {
-  const [audioActive, setAudioActive] = useState<boolean>(isAudioEnabled());
   const [reassigningPatientId, setReassigningPatientId] = useState<number | null>(null);
   const [selectedDoctorId, setSelectedDoctorId] = useState<number | null>(null);
   const [reassigning, setReassigning] = useState<boolean>(false);
@@ -55,15 +45,6 @@ export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergenc
       setSubmittingAdmin(false);
     }
   };
-
-  // Synchronize audio state across components
-  useEffect(() => {
-    const handleToggle = (e: any) => {
-      setAudioActive(e.detail?.enabled ?? isAudioEnabled());
-    };
-    window.addEventListener('vitalguard-audio-toggle', handleToggle);
-    return () => window.removeEventListener('vitalguard-audio-toggle', handleToggle);
-  }, []);
 
   // Play escalation audio alert when a patient reaches escalated_admin status
   useEffect(() => {
@@ -108,85 +89,30 @@ export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergenc
     );
   }
 
-  const criticalPatients = data?.critical_patients || [];
+  const criticalPatients = (data?.critical_patients || []).filter(cp => cp.assignment_status !== 'resolved');
   const doctors = data?.doctors_status || [];
-  const prescriptions = data?.recent_prescriptions || [];
 
   return (
     <div style={{ marginBottom: '2.5rem' }}>
-      {/* Top Banner: Emergency Triage Status */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '1.25rem',
-        flexWrap: 'wrap',
-        gap: '0.5rem'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-          <ShieldAlert size={24} color="#dc2626" />
-          <div>
-            <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#011e3b' }}>
-              Hospital Emergency Triage & Doctor Dispatch Oversight
+      {/* Critical Patients Board */}
+      <div className="card" style={{ marginBottom: '1.5rem', border: '1px solid var(--border)', padding: '1.25rem', borderRadius: '8px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <AlertTriangle size={18} color="#dc2626" />
+            <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)' }}>
+              Critical Patients
             </h2>
-            <p style={{ margin: '0.2rem 0 0', fontSize: '0.85rem', color: '#64748b' }}>
-              Continuous real-time surveillance of fluctuating vitals, doctor assignments, and clinical orders.
-            </p>
+            <span style={{
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              padding: '2px 8px',
+              borderRadius: '999px',
+              backgroundColor: criticalPatients.length > 0 ? '#fee2e2' : '#dcfce7',
+              color: criticalPatients.length > 0 ? '#b91c1c' : '#15803d'
+            }}>
+              {criticalPatients.length > 0 ? `${criticalPatients.length} Active` : 'Stable'}
+            </span>
           </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => {
-              const nextState = !audioActive;
-              setAudioActive(nextState);
-              setAudioEnabled(nextState);
-              toast.info(nextState ? 'Audio telemetry alerts enabled' : 'Audio alerts muted');
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              padding: '6px 12px',
-              borderRadius: '4px',
-              border: `1px solid ${audioActive ? '#bbf7d0' : '#e2e8f0'}`,
-              backgroundColor: audioActive ? '#f0fdf4' : '#f8fafc',
-              color: audioActive ? '#15803d' : '#64748b',
-              cursor: 'pointer',
-              fontSize: '0.8rem',
-              fontWeight: 700
-            }}
-            title="Toggle audible hospital telemetry alerts"
-          >
-            {audioActive ? <Volume2 size={15} color="#16a34a" /> : <VolumeX size={15} color="#94a3b8" />}
-            Audio Alerts: {audioActive ? 'Active' : 'Muted'}
-          </button>
-
-          <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e', display: 'inline-block' }} />
-            Live Auto-Sync Active (4s polling)
-          </span>
-        </div>
-      </div>
-
-      {/* SECTION 1: CRITICAL PATIENTS BOARD (Displays all critical patients e.g. 2 or more) */}
-      <div className="card" style={{ marginBottom: '1.5rem', border: '2px solid #fecaca', backgroundColor: '#fff5f5', padding: '1.5rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <AlertTriangle size={20} color="#dc2626" />
-            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#991b1b' }}>
-              Currently Critical Patients ({criticalPatients.length})
-            </h3>
-          </div>
-          <span style={{
-            fontSize: '0.75rem',
-            fontWeight: 800,
-            padding: '3px 10px',
-            borderRadius: '4px',
-            backgroundColor: criticalPatients.length > 0 ? '#dc2626' : '#16a34a',
-            color: '#ffffff'
-          }}>
-            {criticalPatients.length > 0 ? `${criticalPatients.length} IMMEDIATE ATTENTION REQUIRED` : 'ALL PATIENTS STABLE'}
-          </span>
         </div>
 
         {criticalPatients.length === 0 ? (
@@ -201,49 +127,53 @@ export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergenc
                 key={cp.id}
                 style={{
                   padding: '1.25rem',
-                  borderRadius: '4px',
+                  borderRadius: '6px',
                   backgroundColor: '#ffffff',
-                  border: '1px solid',
-                  borderColor: cp.is_escalated ? '#dc2626' : cp.is_assigned ? '#fca5a5' : '#ef4444',
-                  boxShadow: cp.is_escalated ? '0 4px 12px rgba(220, 38, 38, 0.15)' : '0 2px 4px rgba(220, 38, 38, 0.06)'
+                  border: '1px solid var(--border)',
+                  boxShadow: 'var(--shadow-sm)'
                 }}
               >
-                {/* Header Row: Patient Name (Clickable link) + Room + Assignment Badge */}
+                {/* Header Row: Patient Name + Badges */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                      <Link
-                        to="/app/history"
-                        state={{ patient_id: cp.id }}
-                        style={{
-                          fontSize: '1.15rem',
-                          fontWeight: 800,
-                          color: '#4338ca',
-                          textDecoration: 'none',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.35rem'
-                        }}
-                        title="Click to view current vitals and doctor suggestions"
-                      >
-                        {cp.name}
-                        <ArrowRight size={16} />
-                      </Link>
-                      <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>
-                        ({cp.age}y, {cp.gender} • MRN: {cp.mrn})
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: 700, marginTop: '0.15rem' }}>
-                      Fluctuating Vitals Detected • Risk: {cp.vitals?.risk_level?.toUpperCase() || 'CRITICAL'}
-                    </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <Link
+                      to="/app/history"
+                      state={{ patient_id: cp.id }}
+                      style={{
+                        fontSize: '1.05rem',
+                        fontWeight: 700,
+                        color: '#1e1b4b',
+                        textDecoration: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.3rem'
+                      }}
+                      title="Click to view patient history"
+                    >
+                      {cp.name}
+                      <ArrowRight size={14} color="#4338ca" />
+                    </Link>
+                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                      ({cp.age}y, {cp.gender}{cp.mrn ? ` • MRN: ${cp.mrn}` : ''})
+                    </span>
+                    <span style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      padding: '2px 7px',
+                      borderRadius: '4px',
+                      backgroundColor: '#fee2e2',
+                      color: '#b91c1c'
+                    }}>
+                      {cp.vitals?.risk_level?.toUpperCase() || 'CRITICAL'}
+                    </span>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                     {/* Room Badge */}
                     <span style={{
-                      fontSize: '0.8rem',
-                      fontWeight: 800,
-                      padding: '4px 10px',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      padding: '3px 8px',
                       borderRadius: '4px',
                       backgroundColor: '#eef2ff',
                       color: '#4338ca',
@@ -256,25 +186,25 @@ export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergenc
                     {cp.is_escalated || cp.assignment_status === 'escalated_admin' ? (
                       <span style={{
                         fontSize: '0.75rem',
-                        fontWeight: 800,
-                        padding: '4px 12px',
+                        fontWeight: 700,
+                        padding: '3px 8px',
                         borderRadius: '4px',
                         backgroundColor: '#fee2e2',
                         color: '#991b1b',
-                        border: '1.5px solid #dc2626',
+                        border: '1px solid #dc2626',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '0.4rem'
+                        gap: '0.35rem'
                       }}>
-                        <AlertTriangle size={14} color="#dc2626" />
-                        ESCALATED TO CHIEF MEDICAL OFFICER (Clinicians Unresponsive)
+                        <AlertTriangle size={13} color="#dc2626" />
+                        Escalated to Admin
                       </span>
                     ) : cp.is_assigned ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                         <span style={{
                           fontSize: '0.75rem',
-                          fontWeight: 800,
-                          padding: '4px 10px',
+                          fontWeight: 700,
+                          padding: '3px 8px',
                           borderRadius: '4px',
                           backgroundColor: cp.assignment_status === 'pending' ? '#fef3c7' : '#dcfce7',
                           color: cp.assignment_status === 'pending' ? '#b45309' : '#15803d',
@@ -290,32 +220,34 @@ export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergenc
                             borderRadius: '50%',
                             backgroundColor: cp.assignment_status === 'pending' ? '#f59e0b' : '#22c55e'
                           }} />
-                          Assigned to {formatClinicianName(cp.doctor_name)} ({cp.assignment_status === 'pending' ? 'Pending Acknowledge' : 'In Attendance'})
+                          {formatClinicianName(cp.doctor_name)} ({cp.assignment_status === 'pending' ? 'Pending' : 'Attending'})
                         </span>
 
                         {cp.assignment_status === 'pending' && cp.seconds_remaining !== undefined && (
                           <span style={{
                             fontSize: '0.72rem',
                             fontWeight: 700,
-                            padding: '3px 8px',
+                            padding: '2px 6px',
                             borderRadius: '4px',
                             backgroundColor: '#fee2e2',
                             color: '#b91c1c',
                             border: '1px solid #fca5a5',
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '0.3rem'
+                            gap: '0.25rem'
                           }}>
-                            <Clock size={12} />
-                            Re-routes in: {cp.seconds_remaining}s
+                            <Clock size={11} />
+                            {cp.seconds_remaining >= 60
+                              ? `${Math.floor(cp.seconds_remaining / 60)}m ${cp.seconds_remaining % 60}s`
+                              : `${cp.seconds_remaining}s`}
                           </span>
                         )}
                       </div>
                     ) : (
                       <span style={{
                         fontSize: '0.75rem',
-                        fontWeight: 800,
-                        padding: '4px 10px',
+                        fontWeight: 700,
+                        padding: '3px 8px',
                         borderRadius: '4px',
                         backgroundColor: '#fee2e2',
                         color: '#b91c1c',
@@ -325,7 +257,7 @@ export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergenc
                         gap: '0.35rem'
                       }}>
                         <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#dc2626' }} />
-                        Waiting for Available Doctor (Unassigned)
+                        Unassigned
                       </span>
                     )}
 
@@ -344,8 +276,8 @@ export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergenc
                       style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '0.35rem',
-                        padding: '4px 10px',
+                        gap: '0.3rem',
+                        padding: '3px 8px',
                         borderRadius: '4px',
                         border: '1px solid #c7d2fe',
                         backgroundColor: reassigningPatientId === cp.id ? '#4338ca' : '#eef2ff',
@@ -355,10 +287,10 @@ export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergenc
                         cursor: 'pointer',
                         transition: 'all 0.15s ease'
                       }}
-                      title="Override automatic allotment and assign this patient to a specific doctor"
+                      title="Reassign to another doctor"
                     >
-                      <UserCheck size={13} />
-                      {reassigningPatientId === cp.id ? 'Cancel Reassign' : 'Reassign Doctor'}
+                      <UserCheck size={12} />
+                      {reassigningPatientId === cp.id ? 'Cancel' : 'Reassign'}
                     </button>
                   </div>
                 </div>
@@ -403,7 +335,7 @@ export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergenc
                       >
                         {doctors.map((doc) => (
                           <option key={doc.id} value={doc.id}>
-                            {doc.full_name} ({doc.specialty}) • {doc.availability.toUpperCase()} • Caseload: {doc.active_caseload}
+                            {formatClinicianName(doc.full_name || doc.username)} ({doc.specialty}) • {doc.availability.toUpperCase()} • Caseload: {doc.active_caseload}
                           </option>
                         ))}
                       </select>
@@ -453,79 +385,82 @@ export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergenc
                 {/* Vitals Snapshot */}
                 {cp.vitals && (
                   <div style={{
-                    padding: '0.6rem 0.9rem',
+                    padding: '0.5rem 0.8rem',
                     backgroundColor: '#f8fafc',
                     borderRadius: '4px',
                     border: '1px solid #e2e8f0',
                     display: 'flex',
                     gap: '1.25rem',
                     flexWrap: 'wrap',
-                    fontSize: '0.8rem',
-                    color: '#011e3b',
-                    marginBottom: '0.75rem'
+                    fontSize: '0.78rem',
+                    color: '#334155',
+                    marginBottom: cp.latest_suggestion ? '0.65rem' : 0
                   }}>
-                    <span>Heart Rate: <strong style={{ color: cp.vitals.heart_rate > 100 || cp.vitals.heart_rate < 50 ? '#dc2626' : '#011e3b' }}>{cp.vitals.heart_rate} bpm</strong></span>
+                    <span>HR: <strong style={{ color: cp.vitals.heart_rate > 100 || cp.vitals.heart_rate < 50 ? '#dc2626' : '#011e3b' }}>{cp.vitals.heart_rate} bpm</strong></span>
                     <span>SpO2: <strong style={{ color: cp.vitals.spo2 < 92 ? '#dc2626' : '#011e3b' }}>{cp.vitals.spo2}%</strong></span>
-                    <span>Blood Pressure: <strong>{cp.vitals.systolic_bp} mmHg</strong></span>
+                    <span>BP: <strong style={{ color: cp.vitals.systolic_bp < 90 || cp.vitals.systolic_bp > 140 ? '#dc2626' : '#011e3b' }}>{cp.vitals.systolic_bp} mmHg</strong></span>
                     <span>Temp: <strong style={{ color: cp.vitals.temperature > 38.5 ? '#dc2626' : '#011e3b' }}>{cp.vitals.temperature}°C</strong></span>
-                    <span>Resp Rate: <strong>{cp.vitals.respiratory_rate}/min</strong></span>
+                    <span>RR: <strong style={{ color: cp.vitals.respiratory_rate > 24 || cp.vitals.respiratory_rate < 10 ? '#dc2626' : '#011e3b' }}>{cp.vitals.respiratory_rate}/min</strong></span>
                   </div>
                 )}
 
-                {/* Doctor's Immediate Steps / Suggestions Preview */}
-                <div style={{
-                  padding: '0.75rem 1rem',
-                  backgroundColor: cp.latest_suggestion ? '#f5f3ff' : '#f8fafc',
-                  borderRadius: '4px',
-                  border: '1px solid',
-                  borderColor: cp.latest_suggestion ? '#c7d2fe' : '#e2e8f0',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '0.5rem'
-                }}>
-                  {cp.latest_suggestion ? (
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#4338ca', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                          <Stethoscope size={15} />
-                          Doctor's Order: {cp.latest_suggestion.medication_name} ({cp.latest_suggestion.dosage}) • {cp.latest_suggestion.frequency} by {formatClinicianName(cp.latest_suggestion.doctor_name)}
-                        </div>
+                {/* Doctor's Immediate Steps / Suggestions (shown only when doctor prescribed orders) */}
+                {cp.latest_suggestion && (
+                  <div style={{
+                    marginTop: '0.5rem',
+                    padding: '0.65rem 0.85rem',
+                    backgroundColor: '#f8faff',
+                    borderRadius: '4px',
+                    border: '1px solid #c7d2fe',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '0.5rem'
+                  }}>
+                    <div style={{ flex: 1, minWidth: '240px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: cp.latest_suggestion.instructions ? '0.25rem' : 0 }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#4338ca', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <Stethoscope size={14} />
+                          {cp.latest_suggestion.medication_name} ({cp.latest_suggestion.dosage}) • {cp.latest_suggestion.frequency}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                          by {formatClinicianName(cp.latest_suggestion.doctor_name)}
+                        </span>
 
                         {/* e-MAR Status Badge & Action */}
                         {cp.latest_suggestion.status === 'administered' ? (
                           <span style={{
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '0.3rem',
-                            padding: '3px 8px',
+                            gap: '0.25rem',
+                            padding: '2px 7px',
                             borderRadius: '4px',
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
+                            fontSize: '0.72rem',
+                            fontWeight: 600,
                             backgroundColor: '#dcfce7',
                             color: '#15803d',
                             border: '1px solid #bbf7d0'
                           }}>
-                            <CheckCircle2 size={13} color="#16a34a" />
-                            Administered by {cp.latest_suggestion.administered_by || 'Staff'} {cp.latest_suggestion.administered_at ? `(${new Date(cp.latest_suggestion.administered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : ''}
+                            <CheckCircle2 size={12} color="#16a34a" />
+                            Given {cp.latest_suggestion.administered_at ? `(${formatISTTime(cp.latest_suggestion.administered_at, { includeZone: true })})` : ''}
                           </span>
                         ) : (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                             <span style={{
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '0.3rem',
-                              padding: '3px 8px',
+                              gap: '0.25rem',
+                              padding: '2px 6px',
                               borderRadius: '4px',
-                              fontSize: '0.75rem',
-                              fontWeight: 700,
+                              fontSize: '0.72rem',
+                              fontWeight: 600,
                               backgroundColor: '#fef3c7',
                               color: '#b45309',
                               border: '1px solid #fde68a'
                             }}>
-                              <Clock size={12} />
-                              Pending Administration
+                              <Clock size={11} />
+                              Pending
                             </span>
 
                             <button
@@ -537,88 +472,76 @@ export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergenc
                               style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '0.3rem',
-                                padding: '3px 8px',
+                                gap: '0.25rem',
+                                padding: '2px 7px',
                                 borderRadius: '4px',
                                 backgroundColor: '#4338ca',
                                 color: '#ffffff',
                                 fontSize: '0.72rem',
-                                fontWeight: 800,
+                                fontWeight: 600,
                                 border: 'none',
                                 cursor: 'pointer'
                               }}
-                              title="Record bedside administration for this emergency order"
+                              title="Record administration"
                             >
-                              <Pill size={12} />
-                              Record Administration
+                              <Pill size={11} />
+                              Record
                             </button>
                           </div>
                         )}
                       </div>
 
-                      <div style={{ fontSize: '0.85rem', color: '#3730a3', fontStyle: 'italic', fontWeight: 600 }}>
-                        "{cp.latest_suggestion.instructions || 'Standard emergency monitoring'}"
-                      </div>
+                      {cp.latest_suggestion.instructions && (
+                        <div style={{ fontSize: '0.78rem', color: '#4338ca', fontStyle: 'italic' }}>
+                          "{cp.latest_suggestion.instructions}"
+                        </div>
+                      )}
 
                       {cp.latest_suggestion.administration_notes && (
-                        <div style={{ fontSize: '0.75rem', color: '#166534', fontWeight: 600, marginTop: '0.2rem' }}>
-                          Bedside Note: {cp.latest_suggestion.administration_notes}
+                        <div style={{ fontSize: '0.72rem', color: '#166534', fontWeight: 600, marginTop: '0.15rem' }}>
+                          Note: {cp.latest_suggestion.administration_notes}
                         </div>
                       )}
                     </div>
-                  ) : (
-                    <div style={{ fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
-                      ⏳ Awaiting doctor's clinical orders & suggestions for this patient...
-                    </div>
-                  )}
-
-                  <Link
-                    to="/app/history"
-                    state={{ patient_id: cp.id }}
-                    className="btn"
-                    style={{
-                      fontSize: '0.8rem',
-                      padding: '5px 12px',
-                      backgroundColor: '#ffffff',
-                      border: '1px solid #c7d2fe',
-                      color: '#4338ca',
-                      fontWeight: 700,
-                      borderRadius: '4px'
-                    }}
-                  >
-                    View Current Vitals & Suggestions →
-                  </Link>
-                </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* SECTION 2: DOCTORS LIVE ROSTER + PRESCRIPTIONS AUDIT TRAIL */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem', marginBottom: '1.5rem' }}>
-        
+      {/* SECTION 2: DOCTORS LIVE ROSTER */}
+      <div style={{ marginBottom: '1.5rem' }}>
         {/* Doctors Live Duty Status */}
-        <div className="card" style={{ margin: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Users size={18} color="#4338ca" />
-              General Medicine Clinicians ({doctors.length})
+        <div className="card" style={{ margin: 0, padding: '1.25rem' }}>
+          <div style={{ marginBottom: '1rem' }}>
+            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Users size={16} color="#4338ca" />
+              Active Medical Staff & Clinicians
             </h3>
-            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Live Duty & Caseload</span>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', 
+            gap: '0.75rem' 
+          }}>
             {doctors.map((doc) => {
               const isAvail = doc.availability === 'available';
               const isBusy = doc.availability === 'busy';
+              const statusLabel = isAvail ? 'Available' : isBusy ? 'In Consult' : 'Off Duty';
+              const statusBg = isAvail ? '#dcfce7' : isBusy ? '#fef3c7' : '#f1f5f9';
+              const statusColor = isAvail ? '#15803d' : isBusy ? '#b45309' : '#475569';
+              const statusBorder = isAvail ? '#bbf7d0' : isBusy ? '#fde68a' : '#e2e8f0';
+              const dotColor = isAvail ? '#22c55e' : isBusy ? '#f59e0b' : '#94a3b8';
 
               return (
                 <div
                   key={doc.id}
                   style={{
                     padding: '0.75rem 1rem',
-                    borderRadius: '4px',
+                    borderRadius: '8px',
                     backgroundColor: '#f8fafc',
                     border: '1px solid #e2e8f0',
                     display: 'flex',
@@ -628,8 +551,8 @@ export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergenc
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <div style={{
-                      width: '34px',
-                      height: '34px',
+                      width: '36px',
+                      height: '36px',
                       borderRadius: '50%',
                       backgroundColor: '#eef2ff',
                       display: 'flex',
@@ -637,7 +560,8 @@ export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergenc
                       justifyContent: 'center',
                       fontWeight: 800,
                       color: '#4338ca',
-                      fontSize: '0.85rem'
+                      fontSize: '0.85rem',
+                      flexShrink: 0
                     }}>
                       {doc.username.replace('dr.', '').slice(0, 2).toUpperCase()}
                     </div>
@@ -646,124 +570,36 @@ export const AdminEmergencyTriage = ({ data, loading, onRefresh }: AdminEmergenc
                         {formatClinicianName(doc.full_name || doc.username)}
                       </div>
                       <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                        {doc.specialty || 'General Medicine'} • Active Caseload: <strong style={{ color: '#011e3b' }}>{doc.active_caseload ?? 0}</strong>
+                        {doc.specialty || 'General Medicine'}
                       </div>
                     </div>
                   </div>
 
                   <span style={{
-                    fontSize: '0.75rem',
+                    fontSize: '0.74rem',
                     fontWeight: 700,
-                    padding: '4px 10px',
-                    borderRadius: '999px',
-                    backgroundColor: isAvail ? '#dcfce7' : isBusy ? '#fef3c7' : '#f1f5f9',
-                    color: isAvail ? '#15803d' : isBusy ? '#b45309' : '#64748b',
-                    display: 'flex',
+                    padding: '3px 8px',
+                    borderRadius: '4px',
+                    backgroundColor: statusBg,
+                    color: statusColor,
+                    border: `1px solid ${statusBorder}`,
+                    display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '0.35rem'
+                    gap: '0.35rem',
+                    flexShrink: 0
                   }}>
                     <span style={{
                       width: '6px',
                       height: '6px',
                       borderRadius: '50%',
-                      backgroundColor: isAvail ? '#22c55e' : isBusy ? '#f59e0b' : '#94a3b8'
+                      backgroundColor: dotColor
                     }} />
-                    {isAvail ? 'Available' : isBusy ? 'In Consultation' : 'Off Duty'}
+                    {statusLabel}
                   </span>
                 </div>
               );
             })}
           </div>
-        </div>
-
-        {/* Recent Prescriptions Log */}
-        <div className="card" style={{ margin: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Pill size={18} color="#4338ca" />
-              Latest Doctor Orders & Prescriptions ({prescriptions.length})
-            </h3>
-            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Audit Log</span>
-          </div>
-
-          {prescriptions.length === 0 ? (
-            <div style={{ padding: '1.5rem', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
-              No doctor orders recorded yet.
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '280px', overflowY: 'auto' }}>
-              {prescriptions.map((p) => {
-                const isAdministered = p.status === 'administered';
-                return (
-                  <div key={p.id} style={{ padding: '0.75rem', backgroundColor: '#f8fafc', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.2rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                      <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#011e3b' }}>
-                        {p.medication_name} ({p.dosage})
-                      </span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{ fontSize: '0.7rem', color: '#4338ca', fontWeight: 700 }}>
-                          {p.room_number ? `Room ${p.room_number}` : p.patient_name}
-                        </span>
-
-                        {/* e-MAR Badge */}
-                        {isAdministered ? (
-                          <span style={{
-                            fontSize: '0.7rem',
-                            fontWeight: 700,
-                            padding: '2px 7px',
-                            borderRadius: '4px',
-                            backgroundColor: '#dcfce7',
-                            color: '#15803d',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.25rem'
-                          }}>
-                            <CheckCircle2 size={11} color="#16a34a" />
-                            Administered
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => setAdministeringPresc({
-                              id: p.id,
-                              medName: p.medication_name,
-                              patientName: p.patient_name || 'Patient'
-                            })}
-                            style={{
-                              fontSize: '0.7rem',
-                              fontWeight: 700,
-                              padding: '2px 7px',
-                              borderRadius: '4px',
-                              backgroundColor: '#fef3c7',
-                              color: '#b45309',
-                              border: '1px solid #fde68a',
-                              cursor: 'pointer'
-                            }}
-                            title="Mark as administered by nurse"
-                          >
-                            Mark Administered
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                      {formatClinicianName(p.doctor_name)} • {p.frequency} ({p.route}) • {new Date(p.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                    {p.instructions && (
-                      <div style={{ fontSize: '0.75rem', color: '#475569', fontStyle: 'italic', marginTop: '0.2rem' }}>
-                        "{p.instructions}"
-                      </div>
-                    )}
-                    {isAdministered && (p.administered_by || p.administered_at) && (
-                      <div style={{ fontSize: '0.72rem', color: '#166534', fontWeight: 600, marginTop: '0.25rem' }}>
-                        ✓ Given by {p.administered_by || 'Staff'} {p.administered_at ? `at ${new Date(p.administered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
-                        {p.administration_notes ? ` • Note: ${p.administration_notes}` : ''}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
       </div>
 

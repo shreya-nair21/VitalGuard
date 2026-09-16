@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import { getRiskConfig } from './riskBadge';
+import { formatISTDate, formatISTTime } from './dateUtils';
 import type { AssessmentResponse, Patient } from '../services/api';
 
 export interface VitalsData {
@@ -36,17 +37,8 @@ export const generateClinicalPdfReport = ({
     ? (result.prediction_prob > 1 ? result.prediction_prob : result.prediction_prob * 100).toFixed(1)
     : 'N/A';
 
-  const reportDate = new Date(result.timestamp || Date.now());
-  const formattedDate = reportDate.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  });
-  const formattedTime = reportDate.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  });
+  const formattedDate = formatISTDate(result.timestamp || Date.now());
+  const formattedTime = formatISTTime(result.timestamp || Date.now(), { includeZone: true });
 
   // Color definitions (RGB)
   const navyDark: [number, number, number] = [15, 23, 42]; // #0f172a

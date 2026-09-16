@@ -1,6 +1,7 @@
 import { Activity, AlertTriangle, ShieldAlert } from 'lucide-react';
 import type { AssessmentResponse } from '../../services/api';
 import { getRiskConfig, RiskBadge } from '../../utils/riskBadge';
+import { formatISTTime } from '../../utils/dateUtils';
 
 interface RecentActivityProps {
   assessments?: AssessmentResponse[];
@@ -61,7 +62,7 @@ export const CareSchedule = ({
         }}></div>
 
         {assessments.slice(0, 6).map((item, index) => {
-           const time = new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+           const time = formatISTTime(item.timestamp, { hour12: true });
            const config = getRiskConfig(item.prediction_prob, item.risk_level);
            
            return (

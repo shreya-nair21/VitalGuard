@@ -3,6 +3,7 @@ import { ArrowRight, X, Clock, Calendar, CheckCircle2, Pill } from 'lucide-react
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { getDoctors, getPrescriptions, type DoctorProfile, type Prescription } from '../../services/api';
+import { formatClinicianName } from '../../utils/formatDoctorName';
 
 export const OnlineConsultation = () => {
     const [doctors, setDoctors] = useState<DoctorProfile[]>([]);
@@ -24,7 +25,7 @@ export const OnlineConsultation = () => {
     const handleBook = () => {
         setIsBooking(true);
         setTimeout(() => {
-            toast.success(`Consultation requested with Dr. ${selectedDoc?.username}`, {
+            toast.success(`Consultation requested with ${formatClinicianName(selectedDoc?.full_name || selectedDoc?.username)}`, {
                 description: `Scheduled with ${selectedDoc?.specialty || 'General Medicine'}. Notification sent to doctor.`,
                 icon: <CheckCircle2 size={16} />
             });
@@ -90,7 +91,7 @@ export const OnlineConsultation = () => {
                             <div style={{ width: '70px', height: '70px', borderRadius: '50%', backgroundColor: '#f1f5f9', marginBottom: '1rem', overflow: 'hidden', border: '2px solid #fff', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
                                 <img src={`https://i.pravatar.cc/150?u=${doc.username}`} alt={doc.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                             </div>
-                            <h4 style={{ fontSize: '0.95rem', fontWeight: 700, margin: '0 0 0.25rem 0', color: 'var(--text-main)' }}>Dr. {doc.username}</h4>
+                            <h4 style={{ fontSize: '0.95rem', fontWeight: 700, margin: '0 0 0.25rem 0', color: 'var(--text-main)' }}>{formatClinicianName(doc.full_name || doc.username)}</h4>
                             <span style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '1.25rem' }}>{doc.specialty || 'General Medicine'}</span>
                             
                             <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -156,7 +157,7 @@ export const OnlineConsultation = () => {
                                     <div style={{ width: '90px', height: '90px', borderRadius: '50%', backgroundColor: '#f1f5f9', margin: '0 auto 1.25rem', overflow: 'hidden', border: '3px solid #fff', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}>
                                         <img src={`https://i.pravatar.cc/150?u=${selectedDoc.username}`} alt={selectedDoc.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                     </div>
-                                    <h2 style={{ fontFamily: 'Lora, serif', fontSize: '1.5rem', fontWeight: 900, marginBottom: '0.3rem' }}>Dr. {selectedDoc.username}</h2>
+                                    <h2 style={{ fontFamily: 'Lora, serif', fontSize: '1.5rem', fontWeight: 900, marginBottom: '0.3rem' }}>{formatClinicianName(selectedDoc.full_name || selectedDoc.username)}</h2>
                                     <span style={{ fontSize: '0.9rem', color: '#4338ca', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                         {selectedDoc.specialty || 'General Medicine'} • {selectedDoc.availability.toUpperCase()}
                                     </span>
@@ -273,7 +274,7 @@ export const MedicationList = () => {
                                 <div style={{ flex: 1 }}>
                                     <div style={{ fontWeight: 800, fontSize: '0.95rem', marginBottom: '0.1rem' }}>{med.medication_name}</div>
                                     <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                                        Dose: {med.dosage} • Dr. {med.doctor_name || 'Clinician'}
+                                        Dose: {med.dosage} • {formatClinicianName(med.doctor_name)}
                                     </div>
                                     {med.instructions && (
                                         <div style={{ fontSize: '0.75rem', color: '#475569', fontStyle: 'italic', marginTop: '0.25rem' }}>

@@ -53,12 +53,16 @@ predictor = None
 def format_doctor_display_name(doc: Optional[User]) -> str:
     if not doc:
         return "Staff Clinician"
-    if getattr(doc, "full_name", None):
-        return doc.full_name
-    raw = doc.username
-    if raw.lower().startswith("dr."):
-        return f"Dr. {raw[3:].title()}"
-    return f"Dr. {raw.title()}"
+    raw = (getattr(doc, "full_name", None) or doc.username or "").strip()
+    if not raw:
+        return "Staff Clinician"
+    if "Chief Medical Officer" in raw or "Admin" in raw:
+        return raw
+    import re
+    cleaned = re.sub(r'^(dr[\.\s\-]*)+', '', raw, flags=re.IGNORECASE).strip()
+    if not cleaned:
+        return "Staff Clinician"
+    return f"Dr. {cleaned.title() if '.' in raw or raw.islower() else cleaned}"
 
 def select_best_available_doctor(session: Session, exclude_doctor_ids: Optional[List[int]] = None) -> Optional[User]:
     if exclude_doctor_ids is None:
@@ -94,12 +98,14 @@ def select_best_available_doctor(session: Session, exclude_doctor_ids: Optional[
     doctor_workloads.sort(key=lambda item: (item[0], item[1]))
     return doctor_workloads[0][2]
 
+ASSIGNMENT_TIMEOUT_SECONDS = 120  # 2 minutes auto-reassignment threshold
+
 def check_and_escalate_assignments(session: Session):
     from datetime import datetime, timedelta
     now = datetime.utcnow()
-    timeout_threshold = now - timedelta(seconds=60)
+    timeout_threshold = now - timedelta(seconds=ASSIGNMENT_TIMEOUT_SECONDS)
 
-    # Check all pending assignments created > 60 seconds ago
+    # Check all pending assignments created > 120 seconds (2 minutes) ago
     timed_out_assignments = session.exec(
         select(DoctorAssignment)
         .where(DoctorAssignment.status == "pending")
@@ -114,12 +120,12 @@ def check_and_escalate_assignments(session: Session):
         next_doctor = select_best_available_doctor(session, exclude_doctor_ids=attempted)
         if next_doctor:
             assign.doctor_id = next_doctor.id
-            assign.created_at = datetime.utcnow()  # Reset 60s countdown for new doctor
+            assign.created_at = datetime.utcnow()  # Reset 2 min countdown for new doctor
             assign.attempted_doctor_ids = ",".join(str(x) for x in attempted + [next_doctor.id])
             assign.escalation_level = (assign.escalation_level or 0) + 1
             session.add(assign)
             session.commit()
-            print(f"[60s Timeout Escalation] Re-assigned Patient {assign.patient_id} (Room {assign.room_number}) to Dr. {next_doctor.username}")
+            print(f"[2m Timeout Escalation] Re-assigned Patient {assign.patient_id} (Room {assign.room_number}) to Dr. {next_doctor.username}")
         else:
             # All available doctors exhausted! Escalate to Chief Medical Officer / Admin
             admin_user = session.exec(select(User).where(User.role == "admin")).first()
@@ -286,9 +292,19 @@ async def login_for_access_token(
             detail="Username and password are required"
         )
 
-    # Try to find user by username or email
+    # Try to find user by username, email, or with/without dr. prefix
+    import re
+    cleaned_input = username.strip()
+    no_prefix = re.sub(r'^(dr[\.\s\-]*)', '', cleaned_input, flags=re.IGNORECASE)
+    with_prefix = f"dr.{no_prefix}"
+
     user = session.exec(
-        select(User).where((User.username == username) | (User.email == username))
+        select(User).where(
+            (User.username == cleaned_input) |
+            (User.email == cleaned_input) |
+            (User.username == with_prefix) |
+            (User.username == no_prefix)
+        )
     ).first()
     
     if not user or not verify_password(str(password), user.hashed_password):
@@ -430,7 +446,12 @@ def read_patients(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    patients = session.exec(select(Patient).offset(offset).limit(limit)).all()
+    patients = session.exec(
+        select(Patient)
+        .order_by(col(Patient.id).desc())
+        .offset(offset)
+        .limit(limit)
+    ).all()
     return patients
 
 @app.get("/patients/{patient_id}", response_model=PatientRead)
@@ -639,6 +660,19 @@ def create_assessment(
 
     return db_assessment
 
+@app.get("/assessments", response_model=List[AssessmentRead])
+def read_all_assessments(
+    limit: int = 20,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    assessments = session.exec(
+        select(Assessment)
+        .order_by(col(Assessment.timestamp).desc())
+        .limit(limit)
+    ).all()
+    return assessments
+
 @app.get("/assessments/{patient_id}", response_model=List[AssessmentRead])
 def read_assessments(
     patient_id: int,
@@ -670,8 +704,22 @@ def get_dashboard_stats(
             .where(Assessment.patient_id == patient.id)
             .order_by(col(Assessment.timestamp).desc())
         ).first()
+
+        latest_assign = session.exec(
+            select(DoctorAssignment)
+            .where(DoctorAssignment.patient_id == patient.id)
+            .order_by(col(DoctorAssignment.created_at).desc())
+        ).first()
+        has_active = session.exec(
+            select(DoctorAssignment)
+            .where(DoctorAssignment.patient_id == patient.id)
+            .where(DoctorAssignment.status.in_(["pending", "acknowledged", "escalated_admin"]))
+        ).first()
+
+        is_stabilized = (latest_assign and latest_assign.status == "resolved" and not has_active)
+
         if latest:
-            if latest.risk_level in ["High Risk", "Critical"]:
+            if latest.risk_level in ["High Risk", "Critical"] and not is_stabilized:
                 high_risk_count += 1
             else:
                 stable_count += 1
@@ -725,7 +773,7 @@ def get_doctor_assignments(
     current_user: User = Depends(get_current_user)
 ):
     from datetime import datetime
-    # First: evaluate 60s timeout auto-escalation across active assignments
+    # First: evaluate 120s timeout auto-escalation across active assignments
     check_and_escalate_assignments(session)
 
     query = select(DoctorAssignment)
@@ -764,7 +812,7 @@ def get_doctor_assignments(
         seconds_remaining = None
         if a.status == "pending":
             elapsed = int((now - a.created_at).total_seconds())
-            seconds_remaining = max(0, 60 - elapsed)
+            seconds_remaining = max(0, ASSIGNMENT_TIMEOUT_SECONDS - elapsed)
 
         results.append(DoctorAssignmentDetail(
             id=a.id,
@@ -854,14 +902,49 @@ def resolve_assignment(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
+    from datetime import datetime
     assignment = session.get(DoctorAssignment, assignment_id)
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
     
     assignment.status = "resolved"
     session.add(assignment)
+
+    # 1. Also resolve any other active assignments for this patient
+    active_assignments = session.exec(
+        select(DoctorAssignment)
+        .where(DoctorAssignment.patient_id == assignment.patient_id)
+        .where(DoctorAssignment.status.in_(["pending", "acknowledged", "escalated_admin"]))
+    ).all()
+    for a in active_assignments:
+        a.status = "resolved"
+        session.add(a)
+
+    # 2. Record a stabilized clinical assessment for this patient
+    latest = session.exec(
+        select(Assessment)
+        .where(Assessment.patient_id == assignment.patient_id)
+        .order_by(col(Assessment.timestamp).desc())
+    ).first()
+
+    doctor_name = format_doctor_display_name(current_user)
+    stable_assessment = Assessment(
+        patient_id=assignment.patient_id,
+        heart_rate=75.0 if not latest else min(max(float(latest.heart_rate), 68.0), 88.0),
+        systolic_bp=120.0 if not latest else min(max(float(latest.systolic_bp), 112.0), 128.0),
+        respiratory_rate=16.0 if not latest else min(max(float(latest.respiratory_rate), 14.0), 18.0),
+        temperature=37.0 if not latest else min(max(float(latest.temperature), 36.6), 37.2),
+        spo2=98.0 if not latest else max(float(latest.spo2), 97.0),
+        consciousness="Alert",
+        risk_level="Stable",
+        prediction_prob=0.03,
+        notes=f"Patient clinically stabilized by {doctor_name}. Emergency resolved.",
+        analysis_text=f"Clinically stabilized & emergency resolved by {doctor_name}.",
+        timestamp=datetime.utcnow()
+    )
+    session.add(stable_assessment)
     session.commit()
-    return {"message": "Assignment resolved"}
+    return {"message": "Patient marked as stabilized & emergency resolved"}
 
 class AvailabilityUpdate(BaseModel):
     availability: str  # "available", "busy", "off_duty"
@@ -1095,12 +1178,12 @@ def get_admin_emergency_triage(
     current_user: User = Depends(get_current_user)
 ):
     from datetime import datetime
-    # First: check and trigger 60s timeout auto-escalation
+    # First: check and trigger 120s timeout auto-escalation
     check_and_escalate_assignments(session)
     now = datetime.utcnow()
 
     # 1. Check all patients to find all currently Critical / High Risk patients
-    patients = session.exec(select(Patient)).all()
+    patients = session.exec(select(Patient).order_by(col(Patient.id).desc())).all()
     critical_patients = []
 
     for patient in patients:
@@ -1112,21 +1195,33 @@ def get_admin_emergency_triage(
 
         # Include if latest assessment indicates Critical risk
         if latest_assessment and latest_assessment.risk_level in ["Critical", "High Risk"]:
-            # Find active assignment if any
-            active_assign = session.exec(
+            # Find active or latest assignment if any
+            latest_assign = session.exec(
                 select(DoctorAssignment)
                 .where(DoctorAssignment.patient_id == patient.id)
                 .order_by(col(DoctorAssignment.created_at).desc())
             ).first()
 
+            has_active_assignment = session.exec(
+                select(DoctorAssignment)
+                .where(DoctorAssignment.patient_id == patient.id)
+                .where(DoctorAssignment.status.in_(["pending", "acknowledged", "escalated_admin"]))
+            ).first()
+
+            # If patient's emergency was marked as resolved and no active assignments remain,
+            # the patient is stabilized -> do NOT display card on admin critical dashboard!
+            if latest_assign and latest_assign.status == "resolved" and not has_active_assignment:
+                continue
+
+            active_assign = latest_assign
             is_assigned = (active_assign is not None) and (active_assign.status != "resolved")
             doc = session.get(User, active_assign.doctor_id) if (active_assign and is_assigned) else None
 
-            # Calculate seconds remaining before 60s timeout
+            # Calculate seconds remaining before 2m timeout
             seconds_remaining = None
             if active_assign and active_assign.status == "pending" and active_assign.created_at:
                 elapsed = int((now - active_assign.created_at).total_seconds())
-                seconds_remaining = max(0, 60 - elapsed)
+                seconds_remaining = max(0, ASSIGNMENT_TIMEOUT_SECONDS - elapsed)
 
             # Find latest prescription / suggestion given for this patient
             latest_presc = session.exec(
@@ -1147,11 +1242,11 @@ def get_admin_emergency_triage(
                     "duration": latest_presc.duration,
                     "instructions": latest_presc.instructions,
                     "status": getattr(latest_presc, "status", "ordered") or "ordered",
-                    "administered_at": getattr(latest_presc, "administered_at", None),
+                    "administered_at": (latest_presc.administered_at.isoformat() + "Z") if (latest_presc and getattr(latest_presc, "administered_at", None)) else None,
                     "administered_by": getattr(latest_presc, "administered_by", None),
                     "administration_notes": getattr(latest_presc, "administration_notes", None),
                     "doctor_name": format_doctor_display_name(presc_doc) if presc_doc else "Staff Clinician",
-                    "created_at": latest_presc.created_at
+                    "created_at": (latest_presc.created_at.isoformat() + "Z") if latest_presc.created_at else None
                 }
 
             vitals_dict = {
@@ -1163,7 +1258,7 @@ def get_admin_emergency_triage(
                 "consciousness": latest_assessment.consciousness,
                 "risk_level": latest_assessment.risk_level,
                 "prediction_prob": latest_assessment.prediction_prob,
-                "timestamp": latest_assessment.timestamp
+                "timestamp": (latest_assessment.timestamp.isoformat() + "Z") if latest_assessment.timestamp else None
             }
 
             critical_patients.append({
@@ -1180,13 +1275,19 @@ def get_admin_emergency_triage(
                 "doctor_username": doc.username if doc else None,
                 "doctor_specialty": getattr(doc, "specialty", "General Medicine") if doc else None,
                 "assignment_status": active_assign.status if (active_assign and is_assigned) else "unassigned",
-                "assigned_at": active_assign.created_at if (active_assign and is_assigned) else None,
+                "assigned_at": (active_assign.created_at.isoformat() + "Z") if (active_assign and is_assigned and active_assign.created_at) else None,
                 "seconds_remaining": seconds_remaining,
                 "escalation_level": getattr(active_assign, "escalation_level", 0) if active_assign else 0,
                 "is_escalated": (active_assign.status == "escalated_admin") if (active_assign and is_assigned) else False,
                 "vitals": vitals_dict,
                 "latest_suggestion": presc_dict
             })
+
+    # Sort critical patients with most recent emergency / telemetry on top
+    critical_patients.sort(
+        key=lambda x: str(x.get("assigned_at") or (x.get("vitals") or {}).get("timestamp") or ""),
+        reverse=True
+    )
 
     # Active assignments for legacy/direct reference
     active_assignments = session.exec(
@@ -1209,13 +1310,14 @@ def get_admin_emergency_triage(
                 "temperature": assessment.temperature,
                 "respiratory_rate": assessment.respiratory_rate,
                 "risk_level": assessment.risk_level,
-                "prediction_prob": assessment.prediction_prob
+                "prediction_prob": assessment.prediction_prob,
+                "timestamp": (assessment.timestamp.isoformat() + "Z") if assessment.timestamp else None
             }
 
         assign_seconds_left = None
         if a.status == "pending" and a.created_at:
             elapsed = int((now - a.created_at).total_seconds())
-            assign_seconds_left = max(0, 60 - elapsed)
+            assign_seconds_left = max(0, ASSIGNMENT_TIMEOUT_SECONDS - elapsed)
 
         dispatches.append({
             "id": a.id,
@@ -1230,8 +1332,8 @@ def get_admin_emergency_triage(
             "status": a.status,
             "seconds_remaining": assign_seconds_left,
             "escalation_level": getattr(a, "escalation_level", 0),
-            "created_at": a.created_at,
-            "acknowledged_at": a.acknowledged_at,
+            "created_at": (a.created_at.isoformat() + "Z") if a.created_at else None,
+            "acknowledged_at": (a.acknowledged_at.isoformat() + "Z") if a.acknowledged_at else None,
             "vitals": vitals_dict
         })
 

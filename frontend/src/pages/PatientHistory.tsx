@@ -3,6 +3,8 @@ import { useLocation } from 'react-router-dom';
 import { Activity, Clock, AlertTriangle, CheckCircle, ShieldAlert, Stethoscope } from 'lucide-react';
 import { getPatientHistory, getPatients, getPrescriptions, type AssessmentResponse, type Patient, type Prescription } from '../services/api';
 import { getRiskConfig, RiskBadge } from '../utils/riskBadge';
+import { formatClinicianName } from '../utils/formatDoctorName';
+import { formatISTDateTime } from '../utils/dateUtils';
 
 const PatientHistory = () => {
   const location = useLocation();
@@ -193,7 +195,7 @@ const PatientHistory = () => {
                                </span>
                             </div>
                             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                               Prescribed by <strong>Dr. {presc.doctor_name || 'Staff'}</strong> • {new Date(presc.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                               Prescribed by <strong>{formatClinicianName(presc.doctor_name)}</strong> • {formatISTDateTime(presc.created_at)}
                             </span>
                          </div>
 
@@ -226,7 +228,6 @@ const PatientHistory = () => {
              
              {assessments.map((assessment) => {
                  const config = getRiskConfig(assessment.prediction_prob, assessment.risk_level);
-                 const date = new Date(assessment.timestamp);
                  
                  return (
                     <div key={assessment.id} style={{ marginBottom: '2rem', position: 'relative' }}>
@@ -265,7 +266,7 @@ const PatientHistory = () => {
                                     )}
                                 </div>
                                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                    {date.toLocaleDateString()} {date.toLocaleTimeString()}
+                                    {formatISTDateTime(assessment.timestamp)}
                                 </span>
                             </div>
                             <p style={{ fontSize: '0.875rem', color: 'var(--text-main)', marginBottom: '0.5rem' }}>

@@ -95,7 +95,8 @@ const PatientList = () => {
   const fetchPatients = async () => {
     try {
       const data = await getPatients();
-      setPatients(data);
+      const sorted = [...data].sort((a, b) => b.id - a.id);
+      setPatients(sorted);
     } catch (error) {
       toast.error("Failed to load patient records");
       console.error(error);
@@ -314,15 +315,34 @@ const PatientList = () => {
       <div className="card" style={{ padding: '0', overflow: 'hidden', border: '1px solid var(--border)' }}>
         <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--border)' }}>
             <div style={{ position: 'relative', width: '100%' }}>
-                <Search size={20} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <div style={{
+                    position: 'absolute',
+                    left: '1.15rem',
+                    top: 0,
+                    bottom: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    pointerEvents: 'none',
+                    color: 'var(--text-muted)'
+                }}>
+                    <Search size={20} />
+                </div>
                 <input 
                   type="text" 
                   placeholder="Search by name, room, or patient ID..." 
                   className="input-field"
                   style={{ 
-                      paddingLeft: '3rem', marginBottom: 0, 
-                      backgroundColor: 'var(--input-bg)', border: '1px solid var(--border)',
-                      borderRadius: '999px', height: '48px', color: 'var(--text-main)'
+                      width: '100%',
+                      display: 'block',
+                      boxSizing: 'border-box',
+                      paddingLeft: '3.25rem',
+                      marginBottom: 0, 
+                      backgroundColor: 'var(--input-bg)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '999px',
+                      height: '48px',
+                      color: 'var(--text-main)'
                   }}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}

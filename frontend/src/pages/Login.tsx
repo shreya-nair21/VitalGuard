@@ -106,17 +106,33 @@ const Login = () => {
                         <div>
                             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 800, marginBottom: '0.6rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Work Email</label>
                             <div style={{ position: 'relative' }}>
-                                <Mail size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                                <div style={{
+                                    position: 'absolute',
+                                    left: 0,
+                                    top: 0,
+                                    bottom: 0,
+                                    width: '3rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    pointerEvents: 'none',
+                                    color: '#94a3b8'
+                                }}>
+                                    <Mail size={18} />
+                                </div>
                                 <input 
                                     type="email" 
                                     required
                                     style={{ 
                                         width: '100%', 
+                                        display: 'block',
+                                        boxSizing: 'border-box',
                                         padding: '0.85rem 1rem 0.85rem 3rem', 
                                         border: '1px solid #e2e8f0', 
                                         borderRadius: '4px',
                                         outline: 'none',
                                         fontSize: '0.95rem',
+                                        lineHeight: '1.5',
                                         transition: 'border-color 0.2s',
                                         backgroundColor: '#ffffff',
                                         color: '#011e3b',
@@ -134,17 +150,33 @@ const Login = () => {
                         <div>
                             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 800, marginBottom: '0.6rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Passphrase</label>
                             <div style={{ position: 'relative' }}>
-                                <Lock size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                                <div style={{
+                                    position: 'absolute',
+                                    left: 0,
+                                    top: 0,
+                                    bottom: 0,
+                                    width: '3rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    pointerEvents: 'none',
+                                    color: '#94a3b8'
+                                }}>
+                                    <Lock size={18} />
+                                </div>
                                 <input 
                                     type="password" 
                                     required
                                     style={{ 
                                         width: '100%', 
+                                        display: 'block',
+                                        boxSizing: 'border-box',
                                         padding: '0.85rem 1rem 0.85rem 3rem', 
                                         border: '1px solid #e2e8f0', 
                                         borderRadius: '4px',
                                         outline: 'none',
                                         fontSize: '0.95rem',
+                                        lineHeight: '1.5',
                                         transition: 'border-color 0.2s',
                                         backgroundColor: '#ffffff',
                                         color: '#011e3b',

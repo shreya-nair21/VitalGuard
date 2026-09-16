@@ -6,12 +6,14 @@ import { generateClinicalPdfReport } from '../utils/pdfGenerator';
 import { getPatients, type Patient } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'sonner';
+import { formatClinicianName } from '../utils/formatDoctorName';
+import { formatISTDateTime } from '../utils/dateUtils';
 
 const RiskAssessment = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const { user } = useAuth();
-    const clinicianName = user?.name ? `Dr. ${user.name}` : 'Dr. Attending Physician';
+    const clinicianName = user?.name ? formatClinicianName(user.name) : 'Dr. Attending Physician';
 
     // Get initial state from navigation or use defaults
     const initialState = location.state || {};
@@ -238,10 +240,10 @@ const RiskAssessment = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.3rem', justifyContent: 'flex-end' }}>
-              <Clock size={13} /> Recorded Timestamp
+              <Clock size={13} /> Recorded Timestamp (IST)
             </div>
             <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>
-              {new Date(result.timestamp).toLocaleString()}
+              {formatISTDateTime(result.timestamp)}
             </div>
           </div>
           <RiskBadge probability={result.prediction_prob} riskLevel={result.risk_level} />
@@ -356,7 +358,7 @@ const RiskAssessment = () => {
                 <h4 style={{ fontWeight: 600, fontSize: '0.95rem' }}>Assessment Summary</h4>
               </div>
               <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', paddingLeft: '1.5rem', margin: 0, lineHeight: 1.5 }}>
-                Assessment recorded at {new Date(result.timestamp).toLocaleString()}. 
+                Assessment recorded at {formatISTDateTime(result.timestamp)}. 
                 {riskConfig.tier === 'critical' 
                     ? " Critical urgency: Immediate medical intervention required due to severe deterioration markers." 
                     : riskConfig.tier === 'high'

@@ -220,6 +220,19 @@ export const getPatientHistory = async (patientId: number): Promise<AssessmentRe
     }
 };
 
+export const getRecentAssessments = async (limit: number = 20): Promise<AssessmentResponse[]> => {
+    try {
+        const response = await fetch(`${API_URL}/assessments?limit=${limit}`, {
+            headers: { ...getAuthHeader() }
+        });
+        if (!response.ok) throw new Error('Failed to fetch recent assessments');
+        return await response.json();
+    } catch (error) {
+        console.error('Recent Assessments API Error:', error);
+        return [];
+    }
+};
+
 // ... existing imports ...
 
 export interface DashboardStats {
