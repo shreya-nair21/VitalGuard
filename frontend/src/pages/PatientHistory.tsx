@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
-import { Activity, Clock, AlertTriangle, CheckCircle, ShieldAlert, Stethoscope } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Activity, Clock, AlertTriangle, CheckCircle, ShieldAlert, Stethoscope, PlusCircle } from 'lucide-react';
 import { getPatientHistory, getPatients, getPrescriptions, type AssessmentResponse, type Patient, type Prescription } from '../services/api';
 import { getRiskConfig, RiskBadge } from '../utils/riskBadge';
 import { formatClinicianName } from '../utils/formatDoctorName';
@@ -8,13 +8,14 @@ import { formatISTDateTime } from '../utils/dateUtils';
 
 const PatientHistory = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [assessments, setAssessments] = useState<AssessmentResponse[]>([]);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Initialize with location state or default to 1, but make it stateful
-  const [selectedPatientId, setSelectedPatientId] = useState<number>(location.state?.patient_id || 1);
+  // Initialize with location state or null (dynamically select latest admitted patient after load)
+  const [selectedPatientId, setSelectedPatientId] = useState<number | null>(location.state?.patient_id ?? null);
   const [patients, setPatients] = useState<Patient[]>([]);
 
   // 1. Fetch all patients on mount to populate dropdown
@@ -22,17 +23,29 @@ const PatientHistory = () => {
     const fetchPatients = async () => {
         try {
             const list = await getPatients();
-            setPatients(list);
+            // Sort by patient ID descending so latest admitted patient is first
+            const sorted = [...list].sort((a, b) => b.id - a.id);
+            setPatients(sorted);
+
+            // If no patient ID was explicitly supplied via navigation, default to newest patient
+            if (!location.state?.patient_id && sorted.length > 0) {
+                setSelectedPatientId(sorted[0].id);
+            }
         } catch (err) {
             console.error("Failed to load patient list", err);
         }
     };
     fetchPatients();
-  }, []);
+  }, [location.state?.patient_id]);
 
   // 2. Fetch history whenever selectedPatientId changes
   useEffect(() => {
     const fetchHistory = async () => {
+        if (!selectedPatientId) {
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
         try {
             const [historyData, prescData] = await Promise.all([
@@ -55,6 +68,8 @@ const PatientHistory = () => {
 
     if (selectedPatientId) {
         fetchHistory();
+    } else {
+        setLoading(false);
     }
   }, [selectedPatientId]);
 
@@ -81,7 +96,7 @@ const PatientHistory = () => {
              <strong style={{ color: 'var(--text-main)' }}>Select Patient:</strong>
              <div style={{ position: 'relative' }}>
                 <select 
-                    value={selectedPatientId}
+                    value={selectedPatientId ?? ''}
                     onChange={(e) => setSelectedPatientId(Number(e.target.value))}
                     className="input-field"
                     style={{ 
@@ -101,9 +116,9 @@ const PatientHistory = () => {
                           #{p.id} - {p.name} (Room {p.room_number || 'N/A'})
                         </option>
                     ))}
-                    {/* Fallback if patients not loaded yet or ID not in list */}
-                    {!patients.find(p => p.id === selectedPatientId) && (
-                        <option value={selectedPatientId}>Patient {selectedPatientId}</option>
+                    {/* Fallback if patient ID not in list */}
+                    {selectedPatientId && !patients.find(p => p.id === selectedPatientId) && (
+                        <option value={selectedPatientId}>Patient #{selectedPatientId}</option>
                     )}
                 </select>
              </div>
@@ -163,14 +178,16 @@ const PatientHistory = () => {
                     </div>
                 </>
             ) : (
-                <p>No data recorded.</p>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', padding: '0.5rem 0' }}>
+                  No vitals recorded yet.
+                </div>
             )}
           </div>
         </div>
 
         <div style={{ flex: 1 }}>
-           {/* Doctor's Immediate Suggestions & Prescriptions Section */}
-           {prescriptions.length > 0 && (
+           {/* Doctor's Immediate Suggestions & Prescriptions Section - CRITICAL FIX: Only displayed if vitals have been tested and prescriptions exist */}
+           {assessments.length > 0 && prescriptions.length > 0 && (
              <div className="card" style={{ marginBottom: '2rem', border: '2px solid #c7d2fe', backgroundColor: '#f5f3ff', padding: '1.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                    <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#4338ca', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -219,74 +236,108 @@ const PatientHistory = () => {
              </div>
            )}
 
-           <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1.5rem', display: 'flex', alignItems: 'center' }}>
-             <Clock size={24} style={{ marginRight: '0.75rem' }} />
-             Assessment Timeline
-           </h3>
+           {assessments.length === 0 ? (
+             <div className="card" style={{ 
+               padding: '3rem 2rem', 
+               textAlign: 'center', 
+               backgroundColor: 'var(--surface)', 
+               border: '1px dashed var(--border)',
+               borderRadius: '12px'
+             }}>
+               <div style={{
+                 width: '56px',
+                 height: '56px',
+                 borderRadius: '50%',
+                 backgroundColor: 'rgba(67, 56, 202, 0.08)',
+                 display: 'flex',
+                 alignItems: 'center',
+                 justifyContent: 'center',
+                 margin: '0 auto 1.25rem',
+                 color: '#4338ca'
+               }}>
+                 <Activity size={28} />
+               </div>
+               <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '0.5rem' }}>
+                 No Vitals Telemetry Tested Yet
+               </h3>
+               <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', maxWidth: '500px', margin: '0 auto 1.5rem', lineHeight: 1.6 }}>
+                 This patient is newly registered and has not had their vitals telemetry tested yet. Doctor clinical suggestions, deterioration risk assessments, and prescriptions will appear here once vital signs are recorded.
+               </p>
+               <button 
+                 onClick={() => navigate('/app/assessment', { state: { patient_id: selectedPatientId } })}
+                 className="btn btn-primary"
+                 style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.65rem 1.35rem', fontWeight: 700, margin: '0 auto' }}
+               >
+                 <PlusCircle size={16} />
+                 Conduct Initial Telemetry Assessment
+               </button>
+             </div>
+           ) : (
+             <>
+               <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1.5rem', display: 'flex', alignItems: 'center' }}>
+                 <Clock size={24} style={{ marginRight: '0.75rem' }} />
+                 Assessment Timeline
+               </h3>
 
-           <div style={{ position: 'relative', paddingLeft: '2rem', borderLeft: '2px solid var(--border)' }}>
-             
-             {assessments.map((assessment) => {
-                 const config = getRiskConfig(assessment.prediction_prob, assessment.risk_level);
-                 
-                 return (
-                    <div key={assessment.id} style={{ marginBottom: '2rem', position: 'relative' }}>
-                        <div style={{ 
-                            position: 'absolute', 
-                            left: '-2.6rem', 
-                            top: '0.25rem', 
-                            width: '16px', 
-                            height: '16px', 
-                            borderRadius: '50%', 
-                            backgroundColor: config.color, 
-                            border: '4px solid var(--background)',
-                            boxShadow: `0 0 0 1px ${config.color}`
-                        }}></div>
-                        <div className="card" style={{ borderColor: config.borderColor, backgroundColor: config.lightBg }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                                    <h4 style={{ fontWeight: 600, color: config.color, display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
-                                        {config.tier === 'critical' ? (
-                                          <ShieldAlert size={18} />
-                                        ) : config.tier === 'high' ? (
-                                          <AlertTriangle size={18} />
-                                        ) : (
-                                          <CheckCircle size={18} />
+               <div style={{ position: 'relative', paddingLeft: '2rem', borderLeft: '2px solid var(--border)' }}>
+                 {assessments.map((assessment) => {
+                     const config = getRiskConfig(assessment.prediction_prob, assessment.risk_level);
+                     
+                     return (
+                        <div key={assessment.id} style={{ marginBottom: '2rem', position: 'relative' }}>
+                            <div style={{ 
+                                position: 'absolute', 
+                                left: '-2.6rem', 
+                                top: '0.25rem', 
+                                width: '16px', 
+                                height: '16px', 
+                                borderRadius: '50%', 
+                                backgroundColor: config.color, 
+                                border: '4px solid var(--background)',
+                                boxShadow: `0 0 0 1px ${config.color}`
+                            }}></div>
+                            <div className="card" style={{ borderColor: config.borderColor, backgroundColor: config.lightBg }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                                        <h4 style={{ fontWeight: 600, color: config.color, display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
+                                            {config.tier === 'critical' ? (
+                                              <ShieldAlert size={18} />
+                                            ) : config.tier === 'high' ? (
+                                              <AlertTriangle size={18} />
+                                            ) : (
+                                              <CheckCircle size={18} />
+                                            )}
+                                            {config.label} Assessment
+                                        </h4>
+                                        <RiskBadge 
+                                          probability={assessment.prediction_prob} 
+                                          riskLevel={assessment.risk_level} 
+                                        />
+                                        {typeof assessment.prediction_prob === 'number' && (
+                                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                            ({(assessment.prediction_prob > 1 ? assessment.prediction_prob : assessment.prediction_prob * 100).toFixed(0)}% Score)
+                                          </span>
                                         )}
-                                        {config.label} Assessment
-                                    </h4>
-                                    <RiskBadge 
-                                      probability={assessment.prediction_prob} 
-                                      riskLevel={assessment.risk_level} 
-                                    />
-                                    {typeof assessment.prediction_prob === 'number' && (
-                                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                                        ({(assessment.prediction_prob > 1 ? assessment.prediction_prob : assessment.prediction_prob * 100).toFixed(0)}% Score)
-                                      </span>
-                                    )}
+                                    </div>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                        {formatISTDateTime(assessment.timestamp)}
+                                    </span>
                                 </div>
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                    {formatISTDateTime(assessment.timestamp)}
-                                </span>
-                            </div>
-                            <p style={{ fontSize: '0.875rem', color: 'var(--text-main)', marginBottom: '0.5rem' }}>
-                                <strong>Vitals:</strong> HR: {assessment.heart_rate} bpm | BP: {assessment.systolic_bp} mmHg | SpO2: {assessment.spo2}% | Temp: {assessment.temperature}°C
-                            </p>
-                            {assessment.analysis_text && (
-                                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic', margin: 0 }}>
-                                    Note: {assessment.analysis_text}
+                                <p style={{ fontSize: '0.875rem', color: 'var(--text-main)', marginBottom: '0.5rem' }}>
+                                    <strong>Vitals:</strong> HR: {assessment.heart_rate} bpm | BP: {assessment.systolic_bp} mmHg | SpO2: {assessment.spo2}% | Temp: {assessment.temperature}°C
                                 </p>
-                            )}
+                                {assessment.analysis_text && (
+                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontStyle: 'italic', margin: 0 }}>
+                                        Note: {assessment.analysis_text}
+                                    </p>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                 );
-             })}
-             
-             {assessments.length === 0 && (
-                 <p>No history found for this patient.</p>
-             )}
-
-           </div>
+                     );
+                 })}
+               </div>
+             </>
+           )}
         </div>
       </div>
     </div>

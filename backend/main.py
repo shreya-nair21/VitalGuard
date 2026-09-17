@@ -506,10 +506,18 @@ def delete_patient(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
     
-    # Manually delete child assessments to prevent foreign key errors
+    # Manually delete child records to prevent foreign key errors and orphan data
     assessments = session.exec(select(Assessment).where(Assessment.patient_id == patient_id)).all()
     for assessment in assessments:
         session.delete(assessment)
+
+    prescriptions = session.exec(select(Prescription).where(Prescription.patient_id == patient_id)).all()
+    for presc in prescriptions:
+        session.delete(presc)
+
+    assignments = session.exec(select(DoctorAssignment).where(DoctorAssignment.patient_id == patient_id)).all()
+    for assign in assignments:
+        session.delete(assign)
         
     session.delete(patient)
     session.commit()
