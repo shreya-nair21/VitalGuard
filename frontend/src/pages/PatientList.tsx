@@ -3,7 +3,6 @@ import { Search, X, UserPlus, Edit3, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getPatients, createPatient, updatePatient, deletePatient, getPatientHistory, getNextAllotment, type Patient, type NextAllotment } from '../services/api';
 import { motion } from 'framer-motion';
-import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -21,35 +20,6 @@ const patientSchema = z.object({
   room_number: z.string().optional()
 });
 type PatientFormValues = z.infer<typeof patientSchema>;
-
-// Subcomponent to load sparkline asynchronously
-const PatientSparkline = ({ patientId }: { patientId: number }) => {
-  const [data, setData] = useState<{ hr: number }[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    getPatientHistory(patientId).then(history => {
-      // Get last 5, reversed for chronological order
-      const recent = history.slice(0, 5).reverse().map(h => ({ hr: h.heart_rate }));
-      setData(recent);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, [patientId]);
-
-  if (loading || data.length < 2) return <div style={{ width: '80px', height: '30px', color: 'var(--text-muted)', fontSize: '0.7rem', display: 'flex', alignItems: 'center' }}>No trend</div>;
-
-  return (
-    <div style={{ width: '80px', height: '30px' }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data}>
-          <YAxis domain={['dataMin - 10', 'dataMax + 10']} hide />
-          <Line type="monotone" dataKey="hr" stroke="var(--primary)" strokeWidth={2} dot={false} isAnimationActive={true} />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  );
-};
-
 // Subcomponent to load patient's latest risk status badge
 const PatientStatusBadge = ({ patientId }: { patientId: number }) => {
   const [latest, setLatest] = useState<{ risk_level: string; prediction_prob: number } | null>(null);
@@ -363,14 +333,13 @@ const PatientList = () => {
                         <th style={{ padding: '1.25rem 2rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase' }}>Room No.</th>
                         <th style={{ padding: '1.25rem 2rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase' }}>Patient ID</th>
                         <th style={{ padding: '1.25rem 2rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase' }}>Risk Status</th>
-                        <th style={{ padding: '1.25rem 2rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase' }}>Vitals Trend</th>
                         <th style={{ padding: '1.25rem 2rem', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase' }}>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {filteredPatients.length === 0 ? (
                         <tr>
-                            <td colSpan={6} style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                            <td colSpan={5} style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                                 No patients found.
                             </td>
                         </tr>
@@ -414,9 +383,6 @@ const PatientList = () => {
                             </td>
                             <td style={{ padding: '1.25rem 2rem' }}>
                                 <PatientStatusBadge patientId={patient.id} />
-                            </td>
-                            <td style={{ padding: '1.25rem 2rem' }}>
-                                <PatientSparkline patientId={patient.id} />
                             </td>
                             <td style={{ padding: '1.25rem 2rem' }}>
                                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
